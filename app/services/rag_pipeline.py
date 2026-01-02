@@ -1,0 +1,305 @@
+"""
+RAG Pipeline Implementation
+
+This module orchestrates the complete RAG workflow.
+"""
+
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
+import time
+import openai
+
+from app.core.config import get_settings
+from app.services.retrieval import HybridRetriever, RetrievalResult, ContextCompressor
+
+
+settings = get_settings()
+
+
+@dataclass
+class RAGResponse:
+    """Response from RAG system"""
+    answer: str
+    sources: List[Dict[str, Any]]
+    confidence: float
+    latency_ms: int
+    tokens_used: int
+    retrieval_results: List[RetrievalResult]
+
+
+class RAGPipeline:
+    """Complete RAG pipeline orchestration"""
+    
+    def __init__(
+        self,
+        retriever: HybridRetriever,
+        llm_model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048
+    ):
+        self.retriever = retriever
+        self.llm_model = llm_model or settings.llm_model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.compressor = ContextCompressor(max_tokens=4000)
+        
+        # Set OpenAI API key
+        openai.api_key = settings.openai_api_key
+    
+    def _build_prompt(self, query: str, context: str) -> str:
+        """Build prompt for LLM"""
+        prompt = f"""You are a helpful AI assistant that answers questions based on the provided context.
+
+Context information is below:
+---
+{context}
+---
+
+Instructions:
+- Answer the question using ONLY the information provided in the context above
+- If the context doesn't contain enough information to answer the question, say so clearly
+- Cite your sources by mentioning the source number [Source X]
+- Be concise but comprehensive
+- If you're uncertain, acknowledge it
+
+Question: {query}
+
+Answer:"""
+        
+        return prompt
+    
+    def _call_llm(self, prompt: str) -> Dict[str, Any]:
+        """Call LLM with the prompt"""
+        try:
+            response = openai.chat.completions.create(
+                model=self.llm_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that provides accurate answers based on given context."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=self.temperature,
+                max_tokens=self.max_tokens
+            )
+            
+            return {
+                'answer': response.choices[0].message.content,
+                'tokens_used': response.usage.total_tokens,
+                'finish_reason': response.choices[0].finish_reason
+            }
+        
+        except Exception as e:
+            raise RuntimeError(f"LLM call failed: {e}")
+    
+    def _calculate_confidence(
+        self,
+        retrieval_results: List[RetrievalResult],
+        answer: str
+    ) -> float:
+        """Calculate confidence score for the answer"""
+        if not retrieval_results:
+            return 0.0
+        
+        # Simple confidence calculation based on:
+        # 1. Top retrieval score
+        # 2. Number of high-scoring results
+        # 3. Answer length (very short answers might indicate uncertainty)
+        
+        top_score = retrieval_results[0].score if retrieval_results else 0.0
+        high_score_count = sum(1 for r in retrieval_results if r.score > 0.7)
+        answer_length_factor = min(len(answer) / 200, 1.0)  # Normalize to 0-1
+        
+        confidence = (
+            0.5 * top_score +
+            0.3 * (high_score_count / len(retrieval_results)) +
+            0.2 * answer_length_factor
+        )
+        
+        return min(confidence, 1.0)
+    
+    def query(
+        self,
+        question: str,
+        top_k: int = 5,
+        use_hybrid: bool = True,
+        filter_dict: Optional[Dict[str, Any]] = None
+    ) -> RAGResponse:
+        """
+        Execute complete RAG pipeline
+        
+        Args:
+            question: User's question
+            top_k: Number of documents to retrieve
+            use_hybrid: Whether to use hybrid search
+            filter_dict: Optional metadata filters
+        
+        Returns:
+            RAGResponse with answer and metadata
+        """
+        start_time = time.time()
+        
+        # Step 1: Retrieve relevant documents
+        print(f"🔍 Retrieving documents for: {question}")
+        retrieval_results = self.retriever.retrieve(
+            query=question,
+            top_k=top_k,
+            use_hybrid=use_hybrid,
+            filter_dict=filter_dict
+        )
+        
+        if not retrieval_results:
+            return RAGResponse(
+                answer="I couldn't find any relevant information to answer your question.",
+                sources=[],
+                confidence=0.0,
+                latency_ms=int((time.time() - start_time) * 1000),
+                tokens_used=0,
+                retrieval_results=[]
+            )
+        
+        print(f"✅ Retrieved {len(retrieval_results)} documents")
+        
+        # Step 2: Compress context
+        context = self.compressor.compress(question, retrieval_results)
+        
+        # Step 3: Build prompt
+        prompt = self._build_prompt(question, context)
+        
+        # Step 4: Call LLM
+        print(f"🤖 Generating answer with {self.llm_model}")
+        llm_response = self._call_llm(prompt)
+        
+        # Step 5: Calculate confidence
+        confidence = self._calculate_confidence(retrieval_results, llm_response['answer'])
+        
+        # Step 6: Prepare sources
+        sources = []
+        for i, result in enumerate(retrieval_results):
+            sources.append({
+                'index': i + 1,
+                'document': result.metadata.get('filename', 'unknown'),
+                'page': result.metadata.get('page'),
+                'relevance_score': round(result.score, 3),
+                'text_preview': result.document[:200] + "..." if len(result.document) > 200 else result.document
+            })
+        
+        latency_ms = int((time.time() - start_time) * 1000)
+        
+        print(f"✅ Generated answer in {latency_ms}ms")
+        
+        return RAGResponse(
+            answer=llm_response['answer'],
+            sources=sources,
+            confidence=round(confidence, 2),
+            latency_ms=latency_ms,
+            tokens_used=llm_response['tokens_used'],
+            retrieval_results=retrieval_results
+        )
+    
+    def batch_query(self, questions: List[str], **kwargs) -> List[RAGResponse]:
+        """Process multiple questions"""
+        responses = []
+        
+        for question in questions:
+            try:
+                response = self.query(question, **kwargs)
+                responses.append(response)
+            except Exception as e:
+                print(f"❌ Error processing question '{question}': {e}")
+                responses.append(RAGResponse(
+                    answer=f"Error: {str(e)}",
+                    sources=[],
+                    confidence=0.0,
+                    latency_ms=0,
+                    tokens_used=0,
+                    retrieval_results=[]
+                ))
+        
+        return responses
+
+
+class StreamingRAGPipeline(RAGPipeline):
+    """RAG Pipeline with streaming support"""
+    
+    def stream_query(
+        self,
+        question: str,
+        top_k: int = 5,
+        use_hybrid: bool = True,
+        filter_dict: Optional[Dict[str, Any]] = None
+    ):
+        """Stream response tokens as they're generated"""
+        start_time = time.time()
+        
+        # Retrieve documents
+        retrieval_results = self.retriever.retrieve(
+            query=question,
+            top_k=top_k,
+            use_hybrid=use_hybrid,
+            filter_dict=filter_dict
+        )
+        
+        if not retrieval_results:
+            yield {
+                'type': 'answer',
+                'content': "I couldn't find any relevant information.",
+                'done': True
+            }
+            return
+        
+        # Compress context and build prompt
+        context = self.compressor.compress(question, retrieval_results)
+        prompt = self._build_prompt(question, context)
+        
+        # Yield sources first
+        yield {
+            'type': 'sources',
+            'content': [
+                {
+                    'document': r.metadata.get('filename', 'unknown'),
+                    'score': round(r.score, 3)
+                }
+                for r in retrieval_results
+            ]
+        }
+        
+        # Stream LLM response
+        try:
+            stream = openai.chat.completions.create(
+                model=self.llm_model,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield {
+                        'type': 'answer',
+                        'content': chunk.choices[0].delta.content,
+                        'done': False
+                    }
+            
+            # Final chunk
+            yield {
+                'type': 'answer',
+                'content': '',
+                'done': True,
+                'latency_ms': int((time.time() - start_time) * 1000)
+            }
+        
+        except Exception as e:
+            yield {
+                'type': 'error',
+                'content': str(e),
+                'done': True
+            }

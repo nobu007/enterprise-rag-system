@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from app.services.rag_pipeline import RAGPipeline, RAGResponse
 from app.services.retrieval import RetrievalResult
+from app.services.reranker import Reranker
 
 
 @pytest.fixture
@@ -174,3 +175,122 @@ def test_prompt_building(mock_openai_client):
     assert "What is AI?" in prompt
     assert "AI stands for Artificial Intelligence." in prompt
     assert "Answer the question" in prompt
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_with_reranker_enabled(mock_openai_client, mock_retriever, sample_retrieval_results, mock_chat_completion):
+    """Test RAG pipeline with reranker enabled"""
+    # Setup mock reranker
+    mock_reranker = Mock(spec=Reranker)
+    mock_reranker.rerank_results.return_value = sample_retrieval_results  # Returns top 2
+
+    # Setup retriever to return 50 candidates when reranking
+    large_results = sample_retrieval_results * 25  # Create 50 results
+    mock_retriever.retrieve.return_value = large_results
+
+    mock_openai_client.chat.completions.create = AsyncMock(return_value=mock_chat_completion)
+
+    # Create pipeline with reranker
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4',
+        reranker=mock_reranker
+    )
+
+    # Run query with rerank=True
+    response = await pipeline.query("What is the test question?", top_k=5, rerank=True)
+
+    # Verify reranker was called
+    mock_reranker.rerank_results.assert_called_once()
+
+    # Verify retriever was called with top_k=50 (candidates for reranking)
+    assert mock_retriever.retrieve.call_args[1]['top_k'] == 50
+
+    # Assertions
+    assert isinstance(response, RAGResponse)
+    assert response.answer == mock_chat_completion.choices[0].message.content
+    assert response.confidence > 0
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_with_reranker_disabled(mock_openai_client, mock_retriever, sample_retrieval_results, mock_chat_completion):
+    """Test RAG pipeline with reranker disabled"""
+    mock_retriever.retrieve.return_value = sample_retrieval_results
+    mock_openai_client.chat.completions.create = AsyncMock(return_value=mock_chat_completion)
+
+    # Create pipeline with reranker
+    mock_reranker = Mock(spec=Reranker)
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4',
+        reranker=mock_reranker
+    )
+
+    # Run query with rerank=False
+    response = await pipeline.query("What is the test question?", top_k=5, rerank=False)
+
+    # Verify reranker was NOT called
+    mock_reranker.rerank_results.assert_not_called()
+
+    # Verify retriever was called with top_k=5 (no reranking)
+    assert mock_retriever.retrieve.call_args[1]['top_k'] == 5
+
+    # Assertions
+    assert isinstance(response, RAGResponse)
+    assert response.answer == mock_chat_completion.choices[0].message.content
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_without_reranker(mock_openai_client, mock_retriever, sample_retrieval_results, mock_chat_completion):
+    """Test RAG pipeline without reranker instance"""
+    mock_retriever.retrieve.return_value = sample_retrieval_results
+    mock_openai_client.chat.completions.create = AsyncMock(return_value=mock_chat_completion)
+
+    # Create pipeline without reranker
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4',
+        reranker=None
+    )
+
+    # Run query with rerank=True (should be ignored)
+    response = await pipeline.query("What is the test question?", top_k=5, rerank=True)
+
+    # Verify retriever was called with top_k=5 (no reranking)
+    assert mock_retriever.retrieve.call_args[1]['top_k'] == 5
+
+    # Assertions
+    assert isinstance(response, RAGResponse)
+    assert response.answer == mock_chat_completion.choices[0].message.content
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_reranker_error_fallback(mock_openai_client, mock_retriever, sample_retrieval_results, mock_chat_completion):
+    """Test RAG pipeline falls back gracefully when reranker fails"""
+    # Setup mock reranker that raises an error
+    mock_reranker = Mock(spec=Reranker)
+    mock_reranker.rerank_results.side_effect = Exception("Reranker error")
+
+    # Setup retriever to return 50 candidates
+    large_results = sample_retrieval_results * 25
+    mock_retriever.retrieve.return_value = large_results
+
+    mock_openai_client.chat.completions.create = AsyncMock(return_value=mock_chat_completion)
+
+    # Create pipeline with reranker
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4',
+        reranker=mock_reranker
+    )
+
+    # Run query - should fall back to original results
+    response = await pipeline.query("What is the test question?", top_k=5, rerank=True)
+
+    # Should still complete successfully
+    assert isinstance(response, RAGResponse)
+    assert response.answer == mock_chat_completion.choices[0].message.content

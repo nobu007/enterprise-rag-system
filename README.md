@@ -75,12 +75,24 @@ Modern enterprises face critical challenges in knowledge management:
 
 ### API Usage
 ```bash
+# Basic query (with re-ranking enabled by default)
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is our company policy on remote work?",
     "collection": "hr-policies",
-    "top_k": 5
+    "top_k": 5,
+    "rerank": true
+  }'
+
+# Query without re-ranking (faster, less accurate)
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What is our company policy on remote work?",
+    "collection": "hr-policies",
+    "top_k": 5,
+    "rerank": false
   }'
 ```
 
@@ -264,7 +276,7 @@ EMBEDDING_DIMENSION=1536
 # Search Configuration
 HYBRID_SEARCH_ALPHA=0.5  # 0=keyword only, 1=semantic only
 TOP_K_RESULTS=5
-RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2
+RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 
 # File Paths
 FAISS_INDEX_PATH=./data/faiss_index.bin

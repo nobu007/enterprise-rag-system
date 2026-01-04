@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.services.retrieval import HybridRetriever, RetrievalResult, ContextCompressor
+from app.services.reranker import Reranker
 
 
 settings = get_settings()
@@ -38,7 +39,8 @@ class RAGPipeline:
         llm_client: AsyncOpenAI,
         llm_model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 2048
+        max_tokens: int = 2048,
+        reranker: Optional[Reranker] = None
     ):
         self.retriever = retriever
         self.llm_client = llm_client
@@ -46,6 +48,7 @@ class RAGPipeline:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.compressor = ContextCompressor(max_tokens=4000)
+        self.reranker = reranker
     
     def _build_prompt(self, query: str, context: str) -> str:
         """Build prompt for LLM"""
@@ -128,7 +131,8 @@ Answer:"""
         question: str,
         top_k: int = 5,
         use_hybrid: bool = True,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        rerank: bool = True
     ) -> RAGResponse:
         """
         Execute complete RAG pipeline
@@ -138,6 +142,7 @@ Answer:"""
             top_k: Number of documents to retrieve
             use_hybrid: Whether to use hybrid search
             filter_dict: Optional metadata filters
+            rerank: Whether to apply cross-encoder re-ranking
 
         Returns:
             RAGResponse with answer and metadata
@@ -146,12 +151,31 @@ Answer:"""
 
         # Step 1: Retrieve relevant documents
         logger.debug(f"Retrieving documents for: {question}")
-        retrieval_results = self.retriever.retrieve(
+
+        # If reranking is enabled, retrieve more candidates (top 50)
+        retrieval_candidates = self.retriever.retrieve(
             query=question,
-            top_k=top_k,
+            top_k=50 if rerank and self.reranker else top_k,
             use_hybrid=use_hybrid,
             filter_dict=filter_dict
         )
+
+        # Step 1.5: Re-rank if enabled and reranker is available
+        if rerank and self.reranker and retrieval_candidates:
+            logger.debug("Applying cross-encoder re-ranking")
+            try:
+                reranked_results = self.reranker.rerank_results(
+                    query=question,
+                    results=retrieval_candidates,
+                    top_k=top_k,
+                    doc_text_attr="document"
+                )
+                retrieval_results = reranked_results
+            except Exception as e:
+                logger.warning(f"Re-ranking failed, using original results: {e}")
+                retrieval_results = retrieval_candidates[:top_k]
+        else:
+            retrieval_results = retrieval_candidates[:top_k]
 
         if not retrieval_results:
             return RAGResponse(

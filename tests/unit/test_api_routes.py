@@ -142,7 +142,8 @@ class TestQueryEndpoint:
             question="What is machine learning?",
             top_k=5,
             use_hybrid=True,
-            filter_dict=None
+            filter_dict=None,
+            rerank=True
         )
 
     def test_query_endpoint_with_filters(self, client, mock_rag_pipeline, sample_rag_response):
@@ -163,7 +164,8 @@ class TestQueryEndpoint:
             question="What is AI?",
             top_k=5,
             use_hybrid=True,
-            filter_dict={"category": "tech", "year": 2024}
+            filter_dict={"category": "tech", "year": 2024},
+            rerank=True
         )
 
     def test_query_endpoint_error_handling(self, client, mock_rag_pipeline):

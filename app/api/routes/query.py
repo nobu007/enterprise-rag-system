@@ -21,6 +21,7 @@ class QueryRequest(BaseModel):
     collection: Optional[str] = Field(None, description="Collection/namespace to search in")
     top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
+    rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
 
 
@@ -61,7 +62,8 @@ async def query(
             question=request.query,
             top_k=request.top_k,
             use_hybrid=request.use_hybrid,
-            filter_dict=request.filters
+            filter_dict=request.filters,
+            rerank=request.rerank
         )
 
         return QueryResponse(

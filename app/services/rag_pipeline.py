@@ -13,6 +13,10 @@ from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.services.retrieval import HybridRetriever, RetrievalResult, ContextCompressor
 from app.services.reranker import Reranker
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.cache import CacheManager
 
 
 settings = get_settings()
@@ -40,7 +44,8 @@ class RAGPipeline:
         llm_model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
-        reranker: Optional[Reranker] = None
+        reranker: Optional[Reranker] = None,
+        cache_manager: Optional["CacheManager"] = None
     ):
         self.retriever = retriever
         self.llm_client = llm_client
@@ -49,6 +54,7 @@ class RAGPipeline:
         self.max_tokens = max_tokens
         self.compressor = ContextCompressor(max_tokens=4000)
         self.reranker = reranker
+        self.cache = cache_manager
     
     def _build_prompt(self, query: str, context: str) -> str:
         """Build prompt for LLM"""
@@ -151,6 +157,19 @@ Answer:"""
         """
         start_time = time.time()
 
+        # Check cache first
+        cache_key = None
+        if self.cache:
+            cache_key = self.cache.generate_key(question, collection, top_k, rerank)
+            cached_result = self.cache.get(cache_key)
+
+            if cached_result:
+                logger.info(f"Cache hit for query: {question[:50]}...")
+                # Reconstruct RAGResponse from cached dict
+                return RAGResponse(**cached_result)
+            else:
+                logger.debug(f"Cache miss for query: {question[:50]}...")
+
         # Step 1: Retrieve relevant documents
         logger.debug(f"Retrieving documents for: {question} from collection: {collection}")
 
@@ -220,7 +239,7 @@ Answer:"""
 
         logger.debug(f"Generated answer in {latency_ms}ms")
 
-        return RAGResponse(
+        response = RAGResponse(
             answer=llm_response['answer'],
             sources=sources,
             confidence=round(confidence, 2),
@@ -228,6 +247,13 @@ Answer:"""
             tokens_used=llm_response['tokens_used'],
             retrieval_results=retrieval_results
         )
+
+        # Cache the response
+        if self.cache and cache_key:
+            self.cache.set(cache_key, response)
+            logger.debug(f"Cached response for query: {question[:50]}...")
+
+        return response
     
     async def batch_query(self, questions: List[str], top_k: int = 5, collection: str = "default", **kwargs) -> List[RAGResponse]:
         """Process multiple questions"""

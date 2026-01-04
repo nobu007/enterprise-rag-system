@@ -16,6 +16,7 @@ from app.core.vectordb import get_vector_db
 from app.core.embeddings import get_embedding_model
 from app.core.logging_config import setup_logging, get_logger
 from app.core.rate_limit import limiter
+from app.core.cache import CacheManager
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
@@ -42,6 +43,19 @@ async def lifespan(app: FastAPI):
         openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
         app.state.openai_client = openai_client
 
+        # Initialize Redis cache
+        cache_enabled = settings.cache_enabled
+        logger.info(f"Initializing Redis cache (enabled={cache_enabled})...")
+        cache_manager = CacheManager(
+            redis_host=settings.redis_host,
+            redis_port=settings.redis_port,
+            redis_db=settings.redis_db,
+            redis_password=settings.redis_password,
+            ttl=settings.cache_ttl_seconds,
+            enabled=cache_enabled
+        )
+        app.state.cache_manager = cache_manager
+
         # Initialize components
         logger.info("Initializing vector database...")
         vector_db = get_vector_db(
@@ -66,7 +80,8 @@ async def lifespan(app: FastAPI):
             llm_client=openai_client,
             llm_model=settings.llm_model,
             temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens
+            max_tokens=settings.llm_max_tokens,
+            cache_manager=cache_manager
         )
         app.state.rag_pipeline = rag_pipeline
 

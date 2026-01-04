@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     rate_limit_per_hour: int = Field(1000, env="RATE_LIMIT_PER_HOUR")
     rate_limit_burst: int = Field(10, env="RATE_LIMIT_BURST")
 
+    # Redis Cache Configuration
+    redis_host: str = Field("localhost", env="REDIS_HOST")
+    redis_port: int = Field(6379, env="REDIS_PORT")
+    redis_db: int = Field(0, env="REDIS_DB")
+    redis_password: Optional[str] = Field(None, env="REDIS_PASSWORD")
+    cache_enabled: bool = Field(True, env="CACHE_ENABLED")
+    cache_ttl_seconds: int = Field(3600, env="CACHE_TTL_SECONDS")
+
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
         """Parse comma-separated origins into a list"""

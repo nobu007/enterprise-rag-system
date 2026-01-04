@@ -18,9 +18,11 @@ from app.core.logging_config import setup_logging, get_logger
 from app.core.rate_limit import limiter
 from app.core.cache import CacheManager
 from app.core import metrics
+from app.core.auth import get_auth_manager
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
+from app.api.routes import auth
 from app.middleware.validation import ValidationMiddleware
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
@@ -58,6 +60,26 @@ async def lifespan(app: FastAPI):
             enabled=cache_enabled
         )
         app.state.cache_manager = cache_manager
+
+        # Initialize API key authentication
+        logger.info("Initializing API key authentication...")
+        auth_manager = get_auth_manager()
+
+        # Create default admin API key if none exist
+        existing_keys = auth_manager.list_api_keys()
+        if not existing_keys:
+            logger.info("Creating default admin API key...")
+            default_key = auth_manager.create_api_key(
+                name="Default Admin Key",
+                role="admin",
+                created_by="system",
+                expires_in_days=None  # No expiration
+            )
+            logger.warning(
+                f"Default admin API key created: {default_key.key_id}\n"
+                f"Key value: {default_key.key_value}\n"
+                f"IMPORTANT: Save this key securely. It will not be shown again!"
+            )
 
         # Initialize components
         logger.info("Initializing vector database...")
@@ -272,6 +294,7 @@ async def add_request_id_middleware(request: Request, call_next):
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
+app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
 

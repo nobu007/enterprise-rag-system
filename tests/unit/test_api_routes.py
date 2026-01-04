@@ -12,7 +12,8 @@ from fastapi import HTTPException
 
 from app.api.routes.query import router, QueryRequest, QueryResponse
 from app.services.rag_pipeline import RAGResponse, RAGPipeline
-from app.api.dependencies import get_rag_pipeline
+from app.api.dependencies import get_rag_pipeline, get_api_key
+from app.models.api_key import APIKey, APIKeyRole
 
 
 @pytest.fixture
@@ -23,6 +24,19 @@ def mock_rag_pipeline():
     pipeline.query = AsyncMock()
     pipeline.batch_query = AsyncMock()
     return pipeline
+
+
+@pytest.fixture
+def mock_api_key():
+    """Mock API key for authentication"""
+    api_key = APIKey(
+        key_id="test_key_id",
+        key_value="test_hashed_key",
+        name="Test Key",
+        role=APIKeyRole.USER,
+        created_by="system"
+    )
+    return api_key
 
 
 @pytest.fixture
@@ -47,7 +61,7 @@ def sample_rag_response():
 
 
 @pytest.fixture
-def client(mock_rag_pipeline, sample_rag_response):
+def client(mock_rag_pipeline, sample_rag_response, mock_api_key):
     """Test client with mocked dependencies"""
     from fastapi import FastAPI
 
@@ -58,8 +72,9 @@ def client(mock_rag_pipeline, sample_rag_response):
     mock_rag_pipeline.query.return_value = sample_rag_response
     mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
 
-    # Override the dependency
+    # Override the dependencies
     app.dependency_overrides[get_rag_pipeline] = lambda: mock_rag_pipeline
+    app.dependency_overrides[get_api_key] = lambda: mock_api_key
 
     yield TestClient(app)
 

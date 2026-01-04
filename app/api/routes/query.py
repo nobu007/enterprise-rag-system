@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
 from app.services.rag_pipeline import RAGResponse, RAGPipeline
-from app.api.dependencies import get_rag_pipeline
+from app.api.dependencies import get_rag_pipeline, get_api_key
 from app.core.rate_limit import limiter
 
 
@@ -52,6 +52,7 @@ class BatchQueryRequest(BaseModel):
     responses={
         200: {"description": "Successful query / クエリ成功"},
         400: {"description": "Invalid request parameters / 不正なリクエストパラメータ"},
+        401: {"description": "Authentication required / 認証が必要"},
         422: {"description": "Validation error / バリデーションエラー"},
         429: {"description": "Rate limit exceeded / レート制限超過"},
         500: {"description": "Internal server error / サーバー内部エラー"}
@@ -62,7 +63,8 @@ class BatchQueryRequest(BaseModel):
 async def query(
     request: Request,
     query_req: QueryRequest,
-    pipeline: RAGPipeline = Depends(get_rag_pipeline)
+    pipeline: RAGPipeline = Depends(get_rag_pipeline),
+    api_key=Depends(get_api_key),  # Require authentication
 ) -> QueryResponse:
     """
     Query the RAG system with a question / RAGシステムに質問をクエリします
@@ -139,6 +141,7 @@ async def query(
     responses={
         200: {"description": "Successful batch query / バッチクエリ成功"},
         400: {"description": "Invalid request parameters / 不正なリクエストパラメータ"},
+        401: {"description": "Authentication required / 認証が必要"},
         422: {"description": "Validation error / バリデーションエラー"},
         429: {"description": "Rate limit exceeded / レート制限超過"},
         500: {"description": "Internal server error / サーバー内部エラー"}
@@ -149,7 +152,8 @@ async def query(
 async def batch_query(
     request: Request,
     batch_req: BatchQueryRequest,
-    pipeline: RAGPipeline = Depends(get_rag_pipeline)
+    pipeline: RAGPipeline = Depends(get_rag_pipeline),
+    api_key=Depends(get_api_key),  # Require authentication
 ) -> List[QueryResponse]:
     """
     Query the RAG system with multiple questions / 複数の質問をRAGシステムにクエリします

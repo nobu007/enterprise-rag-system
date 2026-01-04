@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     cache_enabled: bool = Field(True, env="CACHE_ENABLED")
     cache_ttl_seconds: int = Field(3600, env="CACHE_TTL_SECONDS")
 
+    # Celery Configuration
+    celery_broker_url: str = Field("redis://localhost:6379/1", env="CELERY_BROKER_URL")
+    celery_result_backend: str = Field("redis://localhost:6379/2", env="CELERY_RESULT_BACKEND")
+
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
         """Parse comma-separated origins into a list"""

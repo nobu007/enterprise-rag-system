@@ -4,12 +4,13 @@ Document Management API Routes
 This module defines API endpoints for document ingestion and management.
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import tempfile
 import os
+import uuid
 
 from app.core.logging_config import get_logger
 
@@ -40,6 +41,42 @@ class DocumentStats(BaseModel):
     total_documents: int
     total_chunks: int
     collections: List[str]
+
+
+# Batch processing models
+class DocumentCreateRequest(BaseModel):
+    """Request model for single document creation in batch"""
+    id: str = Field(..., description="Unique document identifier")
+    content: str = Field(..., description="Document text content")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata")
+
+
+class BatchIngestRequest(BaseModel):
+    """Request model for batch document ingestion"""
+    documents: List[DocumentCreateRequest] = Field(
+        ...,
+        description="List of documents to process (max 1000)",
+        max_length=1000
+    )
+    collection: str = Field("default", description="Collection name")
+    chunk_size: int = Field(1000, description="Chunk size for splitting", ge=100, le=4000)
+    chunk_overlap: int = Field(200, description="Chunk overlap", ge=0, le=500)
+
+
+class BatchIngestResponse(BaseModel):
+    """Response model for batch ingestion initiation"""
+    task_id: str = Field(..., description="Celery task ID for tracking")
+    status: str = Field(..., description="Task status")
+    total_documents: int = Field(..., description="Number of documents submitted")
+    collection: str = Field(..., description="Collection name")
+
+
+class BatchStatusResponse(BaseModel):
+    """Response model for batch processing status"""
+    task_id: str
+    status: str = Field(..., description="Task state (PENDING/PROGRESS/SUCCESS/FAILURE)")
+    result: Optional[Dict[str, Any]] = Field(None, description="Processing results if complete")
+    error: Optional[str] = Field(None, description="Error message if failed")
 
 
 @router.post(
@@ -349,4 +386,246 @@ async def get_stats() -> DocumentStats:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get stats: {str(e)}"
+        )
+
+
+@router.post(
+    "/batch",
+    response_model=BatchIngestResponse,
+    summary="Batch Ingest Documents / ドキュメント一括インジェスト",
+    description="Submit multiple documents for asynchronous batch processing / 複数のドキュメントを非同期バッチ処理として送信します",
+    response_description="Task ID for tracking progress / 進捗追跡用のタスクID",
+    responses={
+        202: {"description": "Task accepted and processing started / タスク受理、処理開始"},
+        400: {"description": "Invalid request parameters / 不正なリクエストパラメータ"},
+        500: {"description": "Failed to queue task / タスクキュー追加失敗"}
+    },
+    tags=["Documents"]
+)
+async def ingest_documents_batch(
+    request: BatchIngestRequest,
+    background_tasks: BackgroundTasks = None
+) -> BatchIngestResponse:
+    """
+    Submit documents for batch processing / ドキュメントをバッチ処理に送信します
+
+    ## Features / 機能
+
+    - **Asynchronous Processing**: Tasks run in background using Celery / Celeryを使用した非同期処理
+    - **Large Batches**: Process up to 1000 documents in one request / 1リクエストで最大1000ドキュメント処理
+    - **Progress Tracking**: Monitor processing status with task ID / タスクIDで進捗をモニタリング
+    - **Error Isolation**: Failed documents don't affect others / 失敗ドキュメントは他に影響しない
+
+    ## Process / 処理フロー
+
+    1. **Submit**: Send document list to API / APIにドキュメントリストを送信
+    2. **Queue**: Task added to Celery queue / Celeryキューにタスク追加
+    3. **Process**: Worker processes in background / ワーカーがバックグラウンドで処理
+    4. **Track**: Check status with task_id / task_idでステータス確認
+
+    ## Parameters / パラメータ
+
+    - **documents**: List of documents (max 1000) / ドキュメントリスト（最大1000件）
+      - **id**: Unique identifier / 一意識別子
+      - **content**: Text content / テキスト内容
+      - **metadata**: Optional metadata / オプションのメタデータ
+    - **collection**: Collection name (default: "default") / コレクション名
+    - **chunk_size**: Chunk size (100-4000, default: 1000) / チャンクサイズ
+    - **chunk_overlap**: Chunk overlap (0-500, default: 200) / チャンクオーバーラップ
+
+    ## Example Request / リクエスト例
+
+    ```json
+    {
+      "documents": [
+        {
+          "id": "doc1",
+          "content": "This is the first document...",
+          "metadata": {"source": "hr-policies", "category": "benefits"}
+        },
+        {
+          "id": "doc2",
+          "content": "This is the second document...",
+          "metadata": {"source": "hr-policies", "category": "leave"}
+        }
+      ],
+      "collection": "hr-policies",
+      "chunk_size": 1000,
+      "chunk_overlap": 200
+    }
+    ```
+
+    ## Example Response / レスポンス例
+
+    ```json
+    {
+      "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "status": "PROCESSING",
+      "total_documents": 2,
+      "collection": "hr-policies"
+    }
+    ```
+
+    ## Check Status / ステータス確認
+
+    Use the returned `task_id` with GET `/documents/batch/{task_id}/status`
+
+    Args:
+        request: Batch ingestion request
+        background_tasks: FastAPI background tasks (not used, kept for compatibility)
+
+    Returns:
+        BatchIngestResponse with task ID for tracking
+    """
+    try:
+        from app.tasks.batch_tasks import process_document_batch
+
+        # Validate request size
+        if len(request.documents) > 1000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Batch size exceeds maximum of 1000 documents"
+            )
+
+        # Validate document IDs are unique
+        doc_ids = [doc.id for doc in request.documents]
+        if len(doc_ids) != len(set(doc_ids)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document IDs must be unique"
+            )
+
+        # Generate task ID
+        task_id = str(uuid.uuid4())
+
+        # Prepare documents for Celery (convert Pydantic models to dicts)
+        documents_data = [
+            {
+                "id": doc.id,
+                "content": doc.content,
+                "metadata": doc.metadata
+            }
+            for doc in request.documents
+        ]
+
+        # Submit task to Celery
+        task = process_document_batch.apply_async(
+            args=[documents_data, request.collection, request.chunk_size, request.chunk_overlap],
+            task_id=task_id
+        )
+
+        logger.info(
+            f"Submitted batch task {task_id}: "
+            f"{len(request.documents)} documents to collection '{request.collection}'"
+        )
+
+        return BatchIngestResponse(
+            task_id=task_id,
+            status="PROCESSING",
+            total_documents=len(request.documents),
+            collection=request.collection
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit batch task: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to queue batch task: {str(e)}"
+        )
+
+
+@router.get(
+    "/batch/{task_id}/status",
+    response_model=BatchStatusResponse,
+    summary="Get Batch Processing Status / バッチ処理ステータス取得",
+    description="Check the progress and results of a batch processing task / バッチ処理タスクの進捗と結果を確認します",
+    response_description="Task status and results if complete / タスクステータスと完了時の結果",
+    responses={
+        200: {"description": "Status retrieved successfully / ステータス取得成功"},
+        404: {"description": "Task not found / タスクが見つからない"},
+        500: {"description": "Failed to retrieve status / ステータス取得失敗"}
+    },
+    tags=["Documents"]
+)
+async def get_batch_status(task_id: str) -> BatchStatusResponse:
+    """
+    Get batch processing status / バッチ処理のステータスを取得します
+
+    ## Status Values / ステータス値
+
+    - **PENDING**: Task waiting to be processed / 処理待ち
+    - **PROGRESS**: Task currently processing / 処理中
+    - **SUCCESS**: Task completed successfully / 処理成功
+    - **FAILURE**: Task failed / 処理失敗
+
+    ## Result Structure / 結果構造（成功時）
+
+    ```json
+    {
+      "total": 100,
+      "success": 98,
+      "failed": 2,
+      "errors": [
+        {
+          "doc_id": "doc45",
+          "error": "Invalid content",
+          "error_type": "ValueError"
+        }
+      ],
+      "chunks_created": 1250
+    }
+    ```
+
+    ## Example / 例
+
+    ```bash
+    # Check status
+    curl "http://localhost:8000/documents/batch/a1b2c3d4-e5f6-7890-abcd-ef1234567890/status"
+    ```
+
+    Args:
+        task_id: Celery task ID from batch submission
+
+    Returns:
+        BatchStatusResponse with current status and results
+    """
+    try:
+        from app.tasks.batch_tasks import process_document_batch
+        from celery.result import AsyncResult
+
+        # Get task result
+        task = AsyncResult(task_id, app=process_document_batch.app)
+
+        response_data = {
+            "task_id": task_id,
+            "status": task.state,
+            "result": None,
+            "error": None
+        }
+
+        # Handle different task states
+        if task.state == 'PENDING':
+            response_data["status"] = "PENDING"
+        elif task.state == 'PROGRESS':
+            response_data["status"] = "PROGRESS"
+            response_data["result"] = task.info
+        elif task.state == 'SUCCESS':
+            response_data["status"] = "SUCCESS"
+            response_data["result"] = task.result
+        elif task.state == 'FAILURE':
+            response_data["status"] = "FAILURE"
+            response_data["error"] = str(task.info)
+        else:
+            # Handle other Celery states
+            response_data["status"] = task.state
+
+        return BatchStatusResponse(**response_data)
+
+    except Exception as e:
+        logger.error(f"Failed to get batch task status: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve task status: {str(e)}"
         )

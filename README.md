@@ -115,6 +115,109 @@ curl -X POST http://localhost:8000/query \
 }
 ```
 
+### Batch Document Processing
+
+For processing large numbers of documents efficiently, the system provides asynchronous batch processing using Celery:
+
+#### Starting a Batch Job
+
+```bash
+curl -X POST "http://localhost:8000/documents/batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "documents": [
+      {
+        "id": "doc1",
+        "content": "First document content...",
+        "metadata": {"source": "hr-policies", "category": "benefits"}
+      },
+      {
+        "id": "doc2",
+        "content": "Second document content...",
+        "metadata": {"source": "hr-policies", "category": "leave"}
+      }
+    ],
+    "collection": "hr-policies",
+    "chunk_size": 1000,
+    "chunk_overlap": 200
+  }'
+```
+
+**Response:**
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "PROCESSING",
+  "total_documents": 2,
+  "collection": "hr-policies"
+}
+```
+
+#### Checking Batch Status
+
+```bash
+curl "http://localhost:8000/documents/batch/{task_id}/status"
+```
+
+**Response (Processing):**
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "PROGRESS",
+  "result": {
+    "current": 1,
+    "total": 2,
+    "status": "Processed doc1"
+  }
+}
+```
+
+**Response (Complete):**
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "SUCCESS",
+  "result": {
+    "total": 2,
+    "success": 2,
+    "failed": 0,
+    "errors": [],
+    "chunks_created": 15
+  }
+}
+```
+
+#### Batch Processing Features
+
+- **Asynchronous Execution**: Process up to 1000 documents per request without blocking
+- **Progress Tracking**: Monitor processing status in real-time using task IDs
+- **Error Isolation**: Failed documents don't affect others; detailed error reporting
+- **Scalable**: Celery workers can be distributed across multiple machines
+- **Monitoring**: Flower UI for visual task monitoring at http://localhost:5555
+
+#### Running Workers with Docker Compose
+
+```bash
+# Start all services (including Celery worker)
+docker-compose up -d
+
+# View worker logs
+docker-compose logs -f worker
+
+# Access Flower monitoring UI
+# Open http://localhost:5555 in your browser
+```
+
+#### Starting Workers Manually
+
+```bash
+# Start Celery worker
+celery -A app.tasks.batch_tasks worker --loglevel=info --queues=batch_processing
+
+# Start Flower monitoring
+celery -A app.tasks.batch_tasks flower --port=5555
+```
+
 ### Rate Limiting
 
 The API implements rate limiting to prevent abuse and ensure fair resource allocation:

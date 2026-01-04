@@ -32,12 +32,14 @@ def sample_retrieval_results():
         RetrievalResult(
             document='Sample document text 1',
             score=0.85,
-            metadata={'filename': 'test1.pdf', 'page': 1}
+            metadata={'filename': 'test1.pdf', 'page': 1},
+            source='test1.pdf'
         ),
         RetrievalResult(
             document='Sample document text 2',
             score=0.75,
-            metadata={'filename': 'test2.pdf', 'page': 2}
+            metadata={'filename': 'test2.pdf', 'page': 2},
+            source='test2.pdf'
         )
     ]
 
@@ -81,7 +83,7 @@ def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_result
     assert response.answer == mock_llm_response['answer']
     assert response.confidence > 0
     assert len(response.sources) == 2
-    assert response.latency_ms > 0
+    assert response.latency_ms >= 0  # Can be 0 in fast tests
     assert response.tokens_used == mock_llm_response['tokens_used']
 
 

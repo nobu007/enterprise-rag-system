@@ -110,3 +110,25 @@ app_info = Info(
     'application',
     'Application information'
 )
+
+# =============================================================================
+# Circuit Breaker Metrics
+# =============================================================================
+
+circuit_breaker_state_change = Counter(
+    'circuit_breaker_state_changes_total',
+    'Total circuit breaker state transitions',
+    ['name', 'from_state', 'to_state']
+)
+
+circuit_breaker_rejected = Counter(
+    'circuit_breaker_requests_rejected_total',
+    'Total requests rejected by open circuit',
+    ['name']
+)
+
+circuit_breaker_failure = Counter(
+    'circuit_breaker_failures_total',
+    'Total failures through circuit breaker',
+    ['name', 'exception_type']
+)

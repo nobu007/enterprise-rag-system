@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.core import metrics
+from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError
 from app.services.retrieval import HybridRetriever, RetrievalResult, ContextCompressor
 from app.services.reranker import Reranker
 from typing import TYPE_CHECKING
@@ -46,7 +47,8 @@ class RAGPipeline:
         temperature: float = 0.7,
         max_tokens: int = 2048,
         reranker: Optional[Reranker] = None,
-        cache_manager: Optional["CacheManager"] = None
+        cache_manager: Optional["CacheManager"] = None,
+        enable_circuit_breaker: bool = True
     ):
         self.retriever = retriever
         self.llm_client = llm_client
@@ -56,6 +58,21 @@ class RAGPipeline:
         self.compressor = ContextCompressor(max_tokens=4000)
         self.reranker = reranker
         self.cache = cache_manager
+
+        # Initialize circuit breaker for LLM calls
+        if enable_circuit_breaker:
+            self.llm_circuit_breaker = CircuitBreaker(
+                name="llm_api",
+                config=CircuitBreakerConfig(
+                    failure_threshold=5,
+                    success_threshold=2,
+                    timeout=60.0,
+                    expected_exception=RuntimeError
+                )
+            )
+            logger.info("Circuit breaker enabled for LLM API calls")
+        else:
+            self.llm_circuit_breaker = None
     
     def _build_prompt(self, query: str, context: str) -> str:
         """Build prompt for LLM"""
@@ -81,53 +98,64 @@ Answer:"""
     
     async def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """Call LLM with the prompt"""
-        llm_start_time = time.time()
-        try:
-            response = await self.llm_client.chat.completions.create(
-                model=self.llm_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant that provides accurate answers based on given context."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-
-            # Track LLM metrics
-            llm_latency = time.time() - llm_start_time
-            metrics.llm_calls.labels(
-                model=self.llm_model,
-                operation='generate'
-            ).inc()
-
-            metrics.llm_latency.labels(model=self.llm_model).observe(llm_latency)
-
-            # Track token usage
-            if hasattr(response, 'usage') and response.usage:
-                metrics.llm_tokens.labels(
+        async def _make_llm_call():
+            llm_start_time = time.time()
+            try:
+                response = await self.llm_client.chat.completions.create(
                     model=self.llm_model,
-                    type='input'
-                ).inc(response.usage.prompt_tokens)
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful assistant that provides accurate answers based on given context."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens
+                )
 
-                metrics.llm_tokens.labels(
+                # Track LLM metrics
+                llm_latency = time.time() - llm_start_time
+                metrics.llm_calls.labels(
                     model=self.llm_model,
-                    type='output'
-                ).inc(response.usage.completion_tokens)
+                    operation='generate'
+                ).inc()
 
-            return {
-                'answer': response.choices[0].message.content,
-                'tokens_used': response.usage.total_tokens,
-                'finish_reason': response.choices[0].finish_reason
-            }
+                metrics.llm_latency.labels(model=self.llm_model).observe(llm_latency)
 
-        except Exception as e:
-            raise RuntimeError(f"LLM call failed: {e}")
+                # Track token usage
+                if hasattr(response, 'usage') and response.usage:
+                    metrics.llm_tokens.labels(
+                        model=self.llm_model,
+                        type='input'
+                    ).inc(response.usage.prompt_tokens)
+
+                    metrics.llm_tokens.labels(
+                        model=self.llm_model,
+                        type='output'
+                    ).inc(response.usage.completion_tokens)
+
+                return {
+                    'answer': response.choices[0].message.content,
+                    'tokens_used': response.usage.total_tokens,
+                    'finish_reason': response.choices[0].finish_reason
+                }
+
+            except Exception as e:
+                raise RuntimeError(f"LLM call failed: {e}")
+
+        # Use circuit breaker if enabled
+        if self.llm_circuit_breaker:
+            try:
+                return await self.llm_circuit_breaker.call(_make_llm_call)
+            except CircuitBreakerError as e:
+                logger.error(f"Circuit breaker is open: {e}")
+                raise
+        else:
+            return await _make_llm_call()
     
     def _calculate_confidence(
         self,

@@ -70,6 +70,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **Request size limits** (DoS protection)
   - **Security headers** (CSP, HSTS, X-Frame-Options, etc.)
   - **IP-based rate limiting** with proxy header support
+  - **PostgreSQL connection pooling** with asyncpg for production workloads
 
 ---
 
@@ -355,6 +356,119 @@ curl http://localhost:8000/cache/stats
 | Cache Hit | ~10ms | $0 |
 | Cache Miss | 1-3s | ~$0.03 |
 | 80% Hit Rate | ~610ms avg | ~$0.006/query |
+
+### PostgreSQL Connection Pooling
+
+The system uses asyncpg for high-performance PostgreSQL connection pooling in production environments.
+
+#### Benefits
+
+- **⚡ High Performance**: Efficient connection reuse for faster query execution
+- **🔄 Automatic Management**: Connection lifecycle handled automatically
+- **📊 Health Monitoring**: Built-in connection health checks
+- **🔧 Configurable Pool Size**: Adjust pool size based on workload
+- **💪 Production Ready**: Graceful shutdown and error handling
+
+#### Setting up PostgreSQL
+
+**Option 1: Docker (Recommended)**
+```bash
+# Start PostgreSQL in a container
+docker run -d -p 5432:5432 \
+  --name rag-postgres \
+  -e POSTGRES_PASSWORD=your_password \
+  -e POSTGRES_DB=enterprise_rag \
+  postgres:15-alpine
+
+# Verify it's running
+docker ps | grep rag-postgres
+```
+
+**Option 2: Local Installation**
+```bash
+# Ubuntu/Debian
+sudo apt-get install postgresql postgresql-contrib
+sudo systemctl start postgresql
+
+# macOS
+brew install postgresql@15
+brew services start postgresql@15
+
+# Create database
+sudo -u postgres createdb enterprise_rag
+```
+
+**Option 3: Managed PostgreSQL**
+- Use [AWS RDS](https://aws.amazon.com/rds/postgresql/), [Google Cloud SQL](https://cloud.google.com/sql/docs/postgres), or [Azure Database](https://azure.microsoft.com/en-us/services/postgresql/)
+- Update connection settings in your `.env` file
+
+#### Configuration
+
+```bash
+# PostgreSQL connection settings
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=enterprise_rag
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+
+# Connection pool settings
+POSTGRES_POOL_MIN_SIZE=10        # Minimum connections (default: 10)
+POSTGRES_POOL_MAX_SIZE=50        # Maximum connections (default: 50)
+POSTGRES_COMMAND_TIMEOUT=60      # Query timeout in seconds (default: 60)
+```
+
+#### Usage Example
+
+```python
+from app.core.database import get_database_pool, init_database_pool
+
+# Initialize pool (typically in app startup)
+config = {
+    "host": "localhost",
+    "port": 5432,
+    "database": "enterprise_rag",
+    "user": "postgres",
+    "password": "your_password"
+}
+await init_database_pool(config)
+
+# Get pool and execute queries
+pool = await get_database_pool()
+
+# Execute query
+result = await pool.fetch("SELECT * FROM documents LIMIT 10")
+
+# Acquire connection for complex operations
+async with pool.acquire() as conn:
+    async with conn.transaction():
+        await conn.execute("INSERT INTO documents VALUES ($1)", data)
+```
+
+#### Health Check
+
+Monitor database pool health via the API:
+
+```bash
+# Check pool status
+curl http://localhost:8000/health/db
+
+# Example response:
+{
+  "status": "healthy",
+  "pool_size": 10,
+  "max_size": 50,
+  "available_connections": 8
+}
+```
+
+#### Best Practices
+
+- **Pool Sizing**: Set `min_size` to expected concurrent connections, `max_size` for peak load
+- **Timeouts**: Adjust `command_timeout` based on query complexity
+- **Connection Recycling**: Connections are automatically recycled after 50,000 queries
+- **Graceful Shutdown**: Always call `close_database_pool()` before app termination
+- **Error Handling**: Use transaction contexts for multi-step operations
 
 ### Prometheus Metrics and Monitoring
 

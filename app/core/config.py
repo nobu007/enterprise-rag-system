@@ -84,6 +84,16 @@ class Settings(BaseSettings):
     celery_broker_url: str = Field("redis://localhost:6379/1", env="CELERY_BROKER_URL")
     celery_result_backend: str = Field("redis://localhost:6379/2", env="CELERY_RESULT_BACKEND")
 
+    # PostgreSQL Database Configuration
+    postgres_host: str = Field("localhost", env="POSTGRES_HOST")
+    postgres_port: int = Field(5432, env="POSTGRES_PORT")
+    postgres_database: str = Field("enterprise_rag", env="POSTGRES_DATABASE")
+    postgres_user: str = Field("postgres", env="POSTGRES_USER")
+    postgres_password: str = Field("", env="POSTGRES_PASSWORD")
+    postgres_pool_min_size: int = Field(10, env="POSTGRES_POOL_MIN_SIZE")
+    postgres_pool_max_size: int = Field(50, env="POSTGRES_POOL_MAX_SIZE")
+    postgres_command_timeout: int = Field(60, env="POSTGRES_COMMAND_TIMEOUT")
+
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
         """Parse comma-separated origins into a list"""

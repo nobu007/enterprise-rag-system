@@ -47,6 +47,9 @@ redis==5.0.1
 httpx==0.26.0
 asyncio==3.4.3
 
+# Database
+asyncpg==0.29.0
+
 # Monitoring & Observability
 langsmith==0.0.77
 arize-phoenix==2.0.0

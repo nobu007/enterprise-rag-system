@@ -356,6 +356,135 @@ curl http://localhost:8000/cache/stats
 | Cache Miss | 1-3s | ~$0.03 |
 | 80% Hit Rate | ~610ms avg | ~$0.006/query |
 
+### PostgreSQL Connection Pooling
+
+The system uses asyncpg for high-performance PostgreSQL connection pooling, essential for production environments handling concurrent database operations.
+
+#### Benefits
+
+- **⚡ High Performance**: Async connection pool with minimal overhead (10-50x faster than synchronous drivers)
+- **🔄 Automatic Reconnection**: Handles connection failures gracefully
+- **📊 Scalability**: Manages connection limits efficiently (configurable min/max pool size)
+- **🛡️ Production Ready**: Built-in connection lifecycle management and timeout handling
+
+#### Setting up PostgreSQL
+
+**Option 1: Docker (Recommended for Development)**
+```bash
+# Start PostgreSQL in a container
+docker run -d -p 5432:5432 \
+  --name rag-postgres \
+  -e POSTGRES_PASSWORD=your-password \
+  -e POSTGRES_DB=enterprise_rag \
+  postgres:16-alpine
+
+# Verify it's running
+docker ps | grep rag-postgres
+
+# Connect to database
+docker exec -it rag-postgres psql -U postgres -d enterprise_rag
+```
+
+**Option 2: Local Installation**
+```bash
+# Ubuntu/Debian
+sudo apt-get install postgresql postgresql-contrib
+sudo systemctl start postgresql
+
+# macOS
+brew install postgresql@16
+brew services start postgresql@16
+
+# Verify
+psql --version
+```
+
+**Option 3: Managed PostgreSQL**
+- AWS RDS, Google Cloud SQL, or Azure Database for PostgreSQL
+- Update connection settings in `.env` file with cloud provider credentials
+
+#### Configuration
+
+Add to your `.env` file:
+
+```bash
+# PostgreSQL Connection Settings
+POSTGRESQL_HOST=localhost
+POSTGRESQL_PORT=5432
+POSTGRESQL_USER=postgres
+POSTGRESQL_PASSWORD=your-password-here
+POSTGRESQL_DATABASE=enterprise_rag
+
+# Connection Pool Settings
+POSTGRESQL_POOL_MIN=10          # Minimum connections
+POSTGRESQL_POOL_MAX=50          # Maximum connections
+POSTGRESQL_TIMEOUT=30.0         # Query timeout (seconds)
+POSTGRESQL_MAX_QUERIES=50000    # Queries per connection before recycling
+POSTGRESQL_MAX_LIFETIME=300.0   # Connection lifetime (seconds)
+```
+
+#### Usage in Code
+
+The database pool is automatically initialized during application startup:
+
+```python
+from app.core.database import get_db_pool, init_database, close_database
+
+# Initialize on startup (handled in main.py)
+await init_database()
+
+# Use in your code
+pool = await get_db_pool()
+
+# Execute queries
+async with pool.acquire_connection() as conn:
+    result = await conn.fetchval("SELECT COUNT(*) FROM documents")
+
+# Or use convenience methods
+rows = await pool.fetch("SELECT * FROM users WHERE active = true")
+user = await pool.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+
+# Execute non-query statements
+await pool.execute("INSERT INTO logs (message) VALUES ($1)", "Log entry")
+
+# Batch operations
+await pool.executemany(
+    "INSERT INTO metrics (name, value) VALUES ($1, $2)",
+    [("cpu", 80.5), ("memory", 65.2)]
+)
+
+# Transactions
+async with pool.transaction() as tx:
+    await pool.execute("UPDATE accounts SET balance = balance - $1", amount)
+    await pool.execute("UPDATE accounts SET balance = balance + $1", amount)
+
+# Cleanup on shutdown (handled in main.py)
+await close_database()
+```
+
+#### Best Practices
+
+1. **Connection Pool Sizing**:
+   - Set `POSTGRESQL_POOL_MIN` to handle average load
+   - Set `POSTGRESQL_POOL_MAX` based on PostgreSQL `max_connections`
+   - Formula: `pool_max = (max_connections / expected_app_instances) - buffer`
+
+2. **Timeout Settings**:
+   - `POSTGRESQL_TIMEOUT`: Set based on your slowest query
+   - `POSTGRESQL_MAX_LIFETIME`: Recycle connections periodically (5-10 minutes)
+   - `POSTGRESQL_MAX_QUERIES`: Prevent connection bloat from long-running connections
+
+3. **Monitoring**:
+   - Monitor pool usage with Prometheus metrics
+   - Track connection wait times and pool exhaustion
+   - Set up alerts for `POSTGRESQL_POOL_MAX` saturation
+
+4. **Production Deployment**:
+   - Use PgBouncer for additional connection pooling if needed
+   - Enable PostgreSQL connection logging
+   - Configure SSL/TLS for remote connections
+   - Use read replicas for read-heavy workloads
+
 ### Prometheus Metrics and Monitoring
 
 The system exposes comprehensive Prometheus metrics for production monitoring and observability.

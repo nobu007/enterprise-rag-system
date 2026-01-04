@@ -14,6 +14,11 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key-for-testing")
 os.environ.setdefault("LLM_MODEL", "gpt-4")
 os.environ.setdefault("EMBEDDING_MODEL", "text-embedding-ada-002")
 os.environ.setdefault("DEBUG", "true")
+os.environ.setdefault("POSTGRESQL_PASSWORD", "test-password")
+os.environ.setdefault("POSTGRESQL_HOST", "localhost")
+os.environ.setdefault("POSTGRESQL_PORT", "5432")
+os.environ.setdefault("POSTGRESQL_USER", "test_user")
+os.environ.setdefault("POSTGRESQL_DATABASE", "test_db")
 
 
 @pytest.fixture(scope="session")

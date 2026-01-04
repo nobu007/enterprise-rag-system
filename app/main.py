@@ -22,6 +22,7 @@ from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
 from app.middleware.validation import ValidationMiddleware
+from app.core.error_handlers import register_exception_handlers
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -183,32 +184,11 @@ metrics.app_info.info({
     'name': settings.app_name
 })
 
-
-async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    """
-    Custom error handler for rate limit exceeded.
-
-    Args:
-        request: FastAPI request object
-        exc: RateLimitExceeded exception
-
-    Returns:
-        JSONResponse with 429 status code
-    """
-    return JSONResponse(
-        status_code=429,
-        content={
-            "error": "Rate limit exceeded",
-            "message": "Too many requests. Please try again later.",
-            "retry_after": str(exc.retry_after) if hasattr(exc, 'retry_after') else None
-        },
-        headers={"Retry-After": str(exc.retry_after)} if hasattr(exc, 'retry_after') else {}
-    )
-
+# Register global exception handlers
+register_exception_handlers(app)
 
 # Configure rate limiter
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # Configure CORS

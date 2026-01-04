@@ -4,7 +4,7 @@ Document Management API Routes
 This module defines API endpoints for document ingestion and management.
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -13,6 +13,12 @@ import os
 import uuid
 
 from app.core.logging_config import get_logger
+from app.core.exceptions import (
+    ValidationError as RAGValidationError,
+    NotFoundError,
+    DocumentProcessingError,
+    ConflictError,
+)
 
 
 logger = get_logger(__name__)
@@ -148,9 +154,9 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         documents = DocumentLoader.load_directory(request.source_path)
         
         if not documents:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No documents found in the specified path"
+            raise RAGValidationError(
+                "No documents found in the specified path",
+                details={"source_path": request.source_path}
             )
         
         # Split documents into chunks
@@ -192,14 +198,14 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         )
     
     except FileNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+        raise NotFoundError(
+            str(e),
+            details={"source_path": request.source_path}
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ingestion failed: {str(e)}"
+        raise DocumentProcessingError(
+            f"Ingestion failed: {str(e)}",
+            details={"source_path": request.source_path, "error_type": type(e).__name__}
         )
 
 
@@ -282,9 +288,12 @@ async def upload_document(
             elif file_ext == '.txt':
                 documents = [DocumentLoader.load_text_file(tmp_path)]
             else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unsupported file type: {file_ext}"
+                raise RAGValidationError(
+                    f"Unsupported file type: {file_ext}",
+                    details={
+                        "file_extension": file_ext,
+                        "supported_types": [".pdf", ".md", ".txt"]
+                    }
                 )
             
             # Split and embed

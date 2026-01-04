@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing vector database...")
         vector_db = get_vector_db(
             db_type="faiss",
-            index_path="./data/faiss_index.bin"
+            index_path=settings.faiss_index_path
         )
         vector_db.connect()
 
@@ -96,9 +96,9 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=settings.ALLOWED_ORIGINS,  # Use configured origins
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 

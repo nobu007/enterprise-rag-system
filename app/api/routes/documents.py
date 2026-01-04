@@ -85,19 +85,19 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         embeddings = embedding_model.embed_texts(texts)
         
         # Store in vector database
-        vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
-        
+        vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
+
         if vector_db.index is None:
             vector_db.create_index(dimension=embedding_model.dimension)
-        
+
         ids = [chunk.doc_id for chunk in chunks]
         metadata = [chunk.metadata for chunk in chunks]
-        
+
         vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
-        
+
         # Save index
         if hasattr(vector_db, 'save'):
-            vector_db.save("./data/faiss_index.bin")
+            vector_db.save(settings.faiss_index_path)
         
         return DocumentIngestResponse(
             success=True,
@@ -142,7 +142,10 @@ async def upload_document(
         from app.services.document_loader import DocumentLoader, TextSplitter
         from app.core.embeddings import get_embedding_model
         from app.core.vectordb import get_vector_db
-        
+        from app.core.config import get_settings
+
+        settings = get_settings()
+
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
             content = await file.read()
@@ -174,18 +177,18 @@ async def upload_document(
             embeddings = embedding_model.embed_texts(texts)
             
             # Store in vector database
-            vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
-            
+            vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
+
             if vector_db.index is None:
                 vector_db.create_index(dimension=embedding_model.dimension)
-            
+
             ids = [chunk.doc_id for chunk in chunks]
             metadata = [chunk.metadata for chunk in chunks]
-            
+
             vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
-            
+
             if hasattr(vector_db, 'save'):
-                vector_db.save("./data/faiss_index.bin")
+                vector_db.save(settings.faiss_index_path)
             
             return DocumentIngestResponse(
                 success=True,
@@ -212,8 +215,11 @@ async def get_stats() -> DocumentStats:
     """Get statistics about ingested documents"""
     try:
         from app.core.vectordb import get_vector_db
-        
-        vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
+        from app.core.config import get_settings
+
+        settings = get_settings()
+
+        vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
         vector_db.connect()
         
         stats = vector_db.get_stats()

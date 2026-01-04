@@ -266,6 +266,13 @@ HYBRID_SEARCH_ALPHA=0.5  # 0=keyword only, 1=semantic only
 TOP_K_RESULTS=5
 RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2
 
+# File Paths
+FAISS_INDEX_PATH=./data/faiss_index.bin
+CHROMA_PERSIST_DIR=./data/chroma
+
+# CORS (Security: specify allowed origins)
+ALLOWED_ORIGINS=http://localhost:8000,http://localhost:3000
+
 # Performance
 ENABLE_CACHING=true
 CACHE_TTL_SECONDS=3600
@@ -276,6 +283,11 @@ LANGSMITH_API_KEY=...
 LANGSMITH_PROJECT=enterprise-rag
 ARIZE_API_KEY=...
 ```
+
+**Important Security Notes**:
+- `ALLOWED_ORIGINS`: In production, set this to your actual frontend domain(s). Never use `["*"]` in production.
+- For development, the default allows `localhost:8000` and `localhost:3000`
+- To configure multiple origins, separate them with commas: `https://example.com,https://api.example.com`
 
 ---
 

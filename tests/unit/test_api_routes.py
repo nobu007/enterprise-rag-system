@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
 from app.api.routes.query import router, QueryRequest, QueryResponse
-from app.services.rag_pipeline import RAGResponse
+from app.services.rag_pipeline import RAGResponse, RAGPipeline
+from app.api.dependencies import get_rag_pipeline
 
 
 @pytest.fixture
@@ -53,12 +54,17 @@ def client(mock_rag_pipeline, sample_rag_response):
     app = FastAPI()
     app.include_router(router)
 
-    # Mock the get_rag_pipeline function - patch at import location
-    with patch('app.main.get_rag_pipeline', return_value=mock_rag_pipeline):
-        # Set up the default return value for query method
-        mock_rag_pipeline.query.return_value = sample_rag_response
-        mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
-        yield TestClient(app)
+    # Set up the default return value for query method
+    mock_rag_pipeline.query.return_value = sample_rag_response
+    mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
+
+    # Override the dependency
+    app.dependency_overrides[get_rag_pipeline] = lambda: mock_rag_pipeline
+
+    yield TestClient(app)
+
+    # Clean up
+    app.dependency_overrides = {}
 
 
 class TestQueryRequestValidation:

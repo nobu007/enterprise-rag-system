@@ -27,23 +27,17 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
-# Global instances (initialized at startup)
-_rag_pipeline: RAGPipeline = None
-_openai_client: AsyncOpenAI = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown"""
     # Startup
     logger.info("Starting Enterprise RAG System...")
 
-    global _rag_pipeline, _openai_client
-
     try:
         # Initialize OpenAI client
         logger.info("Initializing OpenAI async client...")
-        _openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+        openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+        app.state.openai_client = openai_client
 
         # Initialize components
         logger.info("Initializing vector database...")
@@ -64,13 +58,14 @@ async def lifespan(app: FastAPI):
         )
 
         logger.info("Initializing RAG pipeline...")
-        _rag_pipeline = RAGPipeline(
+        rag_pipeline = RAGPipeline(
             retriever=retriever,
-            llm_client=_openai_client,
+            llm_client=openai_client,
             llm_model=settings.llm_model,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens
         )
+        app.state.rag_pipeline = rag_pipeline
 
         logger.info("Enterprise RAG System ready!")
 
@@ -168,13 +163,6 @@ async def health_check():
         "status": "healthy",
         "version": settings.app_version
     }
-
-
-def get_rag_pipeline() -> RAGPipeline:
-    """Get the global RAG pipeline instance"""
-    if _rag_pipeline is None:
-        raise RuntimeError("RAG pipeline not initialized")
-    return _rag_pipeline
 
 
 if __name__ == "__main__":

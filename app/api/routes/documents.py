@@ -93,7 +93,9 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         ids = [chunk.doc_id for chunk in chunks]
         metadata = [chunk.metadata for chunk in chunks]
 
-        vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
+        # Use collection from request
+        collection = request.collection or "default"
+        vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata, collection=collection)
 
         # Save index
         if hasattr(vector_db, 'save'):
@@ -185,7 +187,9 @@ async def upload_document(
             ids = [chunk.doc_id for chunk in chunks]
             metadata = [chunk.metadata for chunk in chunks]
 
-            vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
+            # Use collection from request
+            collection_name = collection or "default"
+            vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata, collection=collection_name)
 
             if hasattr(vector_db, 'save'):
                 vector_db.save(settings.faiss_index_path)
@@ -223,11 +227,14 @@ async def get_stats() -> DocumentStats:
         vector_db.connect()
         
         stats = vector_db.get_stats()
-        
+
+        # Extract collection names from stats
+        collection_names = list(stats.get('collections', {}).keys())
+
         return DocumentStats(
             total_documents=stats.get('total_vectors', 0),
             total_chunks=stats.get('total_vectors', 0),
-            collections=["default"]  # TODO: Implement multi-collection support
+            collections=collection_names if collection_names else ["default"]
         )
     
     except Exception as e:

@@ -132,7 +132,8 @@ Answer:"""
         top_k: int = 5,
         use_hybrid: bool = True,
         filter_dict: Optional[Dict[str, Any]] = None,
-        rerank: bool = True
+        rerank: bool = True,
+        collection: str = "default"
     ) -> RAGResponse:
         """
         Execute complete RAG pipeline
@@ -143,6 +144,7 @@ Answer:"""
             use_hybrid: Whether to use hybrid search
             filter_dict: Optional metadata filters
             rerank: Whether to apply cross-encoder re-ranking
+            collection: Collection to search in
 
         Returns:
             RAGResponse with answer and metadata
@@ -150,14 +152,15 @@ Answer:"""
         start_time = time.time()
 
         # Step 1: Retrieve relevant documents
-        logger.debug(f"Retrieving documents for: {question}")
+        logger.debug(f"Retrieving documents for: {question} from collection: {collection}")
 
         # If reranking is enabled, retrieve more candidates (top 50)
         retrieval_candidates = self.retriever.retrieve(
             query=question,
             top_k=50 if rerank and self.reranker else top_k,
             use_hybrid=use_hybrid,
-            filter_dict=filter_dict
+            filter_dict=filter_dict,
+            collection=collection
         )
 
         # Step 1.5: Re-rank if enabled and reranker is available
@@ -226,13 +229,13 @@ Answer:"""
             retrieval_results=retrieval_results
         )
     
-    async def batch_query(self, questions: List[str], **kwargs) -> List[RAGResponse]:
+    async def batch_query(self, questions: List[str], top_k: int = 5, collection: str = "default", **kwargs) -> List[RAGResponse]:
         """Process multiple questions"""
         responses = []
 
         for question in questions:
             try:
-                response = await self.query(question, **kwargs)
+                response = await self.query(question, top_k=top_k, collection=collection, **kwargs)
                 responses.append(response)
             except Exception as e:
                 logger.error(f"Error processing question '{question}': {e}")
@@ -256,7 +259,8 @@ class StreamingRAGPipeline(RAGPipeline):
         question: str,
         top_k: int = 5,
         use_hybrid: bool = True,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        collection: str = "default"
     ):
         """Stream response tokens as they're generated"""
         start_time = time.time()
@@ -266,7 +270,8 @@ class StreamingRAGPipeline(RAGPipeline):
             query=question,
             top_k=top_k,
             use_hybrid=use_hybrid,
-            filter_dict=filter_dict
+            filter_dict=filter_dict,
+            collection=collection
         )
 
         if not retrieval_results:

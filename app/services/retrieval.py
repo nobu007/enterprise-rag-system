@@ -72,19 +72,21 @@ class HybridRetriever:
         self,
         query: str,
         top_k: int = 5,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        collection: str = "default"
     ) -> List[SearchResult]:
         """Perform semantic search using embeddings"""
         # Generate query embedding
         query_embedding = self.embedding_model.embed_query(query)
-        
+
         # Search vector database
         results = self.vector_db.search(
             query_vector=query_embedding,
             top_k=top_k,
-            filter_dict=filter_dict
+            filter_dict=filter_dict,
+            collection=collection
         )
-        
+
         return results
     
     def keyword_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
@@ -118,11 +120,12 @@ class HybridRetriever:
         self,
         query: str,
         top_k: int = 5,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        collection: str = "default"
     ) -> List[RetrievalResult]:
         """Perform hybrid search combining semantic and keyword search"""
         # Perform both searches
-        semantic_results = self.semantic_search(query, top_k=top_k * 2, filter_dict=filter_dict)
+        semantic_results = self.semantic_search(query, top_k=top_k * 2, filter_dict=filter_dict, collection=collection)
         keyword_results = self.keyword_search(query, top_k=top_k * 2) if self.bm25_index else []
         
         # Combine results using Reciprocal Rank Fusion (RRF)
@@ -181,14 +184,15 @@ class HybridRetriever:
         query: str,
         top_k: int = 5,
         use_hybrid: bool = True,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        collection: str = "default"
     ) -> List[RetrievalResult]:
         """Main retrieval method"""
         if use_hybrid and self.bm25_index:
-            return self.hybrid_search(query, top_k=top_k, filter_dict=filter_dict)
+            return self.hybrid_search(query, top_k=top_k, filter_dict=filter_dict, collection=collection)
         else:
             # Fallback to semantic search only
-            semantic_results = self.semantic_search(query, top_k=top_k, filter_dict=filter_dict)
+            semantic_results = self.semantic_search(query, top_k=top_k, filter_dict=filter_dict, collection=collection)
             return [
                 RetrievalResult(
                     document=r.text,

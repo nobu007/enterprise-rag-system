@@ -143,7 +143,8 @@ class TestQueryEndpoint:
             top_k=5,
             use_hybrid=True,
             filter_dict=None,
-            rerank=True
+            rerank=True,
+            collection='default'
         )
 
     def test_query_endpoint_with_filters(self, client, mock_rag_pipeline, sample_rag_response):
@@ -165,7 +166,8 @@ class TestQueryEndpoint:
             top_k=5,
             use_hybrid=True,
             filter_dict={"category": "tech", "year": 2024},
-            rerank=True
+            rerank=True,
+            collection='default'
         )
 
     def test_query_endpoint_error_handling(self, client, mock_rag_pipeline):
@@ -222,7 +224,8 @@ class TestBatchQueryEndpoint:
                 "What is deep learning?",
                 "What is NLP?"
             ],
-            top_k=5
+            top_k=5,
+            collection='default'
         )
 
     def test_batch_query_empty_list(self, client, mock_rag_pipeline):

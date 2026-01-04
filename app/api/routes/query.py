@@ -63,7 +63,8 @@ async def query(
             top_k=request.top_k,
             use_hybrid=request.use_hybrid,
             filter_dict=request.filters,
-            rerank=request.rerank
+            rerank=request.rerank,
+            collection=request.collection or "default"
         )
 
         return QueryResponse(
@@ -100,7 +101,8 @@ async def batch_query(
         # Execute batch query
         results = await pipeline.batch_query(
             questions=request.queries,
-            top_k=request.top_k
+            top_k=request.top_k,
+            collection=request.collection or "default"
         )
 
         responses = []

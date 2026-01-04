@@ -103,8 +103,65 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Production-grade RAG pipeline for enterprise knowledge bases",
-    lifespan=lifespan
+    description="""
+Enterprise RAG System API / 企業向けRAGシステム API
+
+## Features / 機能
+
+* **Semantic Search**: High-performance vector similarity search / 高性能ベクトル類似度検索
+* **Hybrid Search**: Combines semantic and keyword search for optimal results / セマンティック検索とキーワード検索を組み合わせた最適な結果
+* **Re-ranking**: Cross-encoder re-ranking for improved accuracy / 改善された精度のためのクロスエンコーダー再ランク付け
+* **Multi-collection**: Logical separation and management of document collections / ドキュメントコレクションの論理的分離と管理
+* **Response Caching**: Redis-based high-speed response caching / Redisベースの高速応答キャッシュ
+* **Rate Limiting**: API protection and fair resource allocation / API保護と公平なリソース配分
+
+## Authentication / 認証
+
+API key authentication is supported (optional) / APIキー認証をサポート（オプション）
+
+```http
+X-API-Key: your-api-key-here
+```
+
+## Rate Limiting / レート制限
+
+* `/api/v1/query/` endpoint: 60 requests/minute / エンドポイント: 60リクエスト/分
+* `/api/v1/query/batch` endpoint: 60 requests/minute / エンドポイント: 60リクエスト/分
+* `/api/v1/documents/ingest` endpoint: 20 requests/minute / エンドポイント: 20リクエスト/分
+* `/health` endpoints: 120 requests/minute / エンドポイント: 120リクエスト/分
+
+## Documentation / ドキュメント
+
+* **Swagger UI**: Interactive API documentation at `/docs` `/docs`でのインタラクティブなAPIドキュメント
+* **ReDoc**: Alternative documentation at `/redoc` `/redoc`での代替ドキュメント
+* **OpenAPI JSON**: Schema export at `/openapi.json` `/openapi.json`でのスキーマエクスポート
+    """,
+    lifespan=lifespan,
+    docs_url="/docs",  # Swagger UI
+    redoc_url="/redoc",  # ReDoc
+    openapi_tags=[
+        {
+            "name": "Query",
+            "description": "RAG query execution and search functionality / RAGクエリ実行と検索機能"
+        },
+        {
+            "name": "Documents",
+            "description": "Document registration and management / ドキュメント登録と管理"
+        },
+        {
+            "name": "Health",
+            "description": "Health checks and system information / ヘルスチェックとシステム情報"
+        }
+    ],
+    contact={
+        "name": "API Support",
+        "email": "support@example.com",
+        "url": "https://github.com/jinno-ai/enterprise-rag-system/issues"
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT"
+    }
 )
 
 # Setup Prometheus instrumentation

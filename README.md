@@ -512,6 +512,65 @@ uvicorn app.main:app --reload --port 8000
 streamlit run ui/app.py
 ```
 
+### Interactive API Documentation
+
+The API includes comprehensive interactive documentation powered by FastAPI:
+
+#### Swagger UI (Interactive API Explorer)
+**Access**: http://localhost:8000/docs
+
+- **Try it out**: Test API endpoints directly from your browser
+- **Request examples**: See example requests for each endpoint
+- **Response schemas**: View expected response structures
+- **Authentication**: Add API keys and test authenticated requests
+- **Real-time validation**: See validation errors instantly
+
+#### ReDoc (Alternative Documentation)
+**Access**: http://localhost:8000/redoc
+
+- **Clean layout**: Alternative documentation format
+- **Searchable**: Easy navigation and search
+- **Printable**: Generate PDF documentation
+
+#### OpenAPI JSON Schema
+**Access**: http://localhost:8000/openapi.json
+
+- **Machine-readable**: Standard OpenAPI 3.0 specification
+- **Client SDK generation**: Generate client libraries using:
+  - [OpenAPI Generator](https://openapi-generator.tech)
+  - [AutoRest](https://github.com/Azure/autorest)
+  - [swagger-codegen](https://github.com/swagger-api/swagger-codegen)
+
+#### Example: Generate a Python Client
+```bash
+# Install openapi-generator
+npm install -g @openapitools/openapi-generator-cli
+
+# Generate Python client
+openapi-generator-cli generate \
+  -i http://localhost:8000/openapi.json \
+  -g python \
+  -o ./client-python \
+  --package-name enterprise_rag_client
+
+# Install the generated client
+cd client-python
+pip install -e .
+```
+
+#### Example: Generate a TypeScript Client
+```bash
+# Generate TypeScript client
+openapi-generator-cli generate \
+  -i http://localhost:8000/openapi.json \
+  -g typescript-axios \
+  -o ./client-ts
+
+# Use in your project
+cd client-ts
+npm install
+```
+
 ### Ingest Your Documents
 ```bash
 # Ingest local documents

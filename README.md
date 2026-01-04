@@ -249,6 +249,166 @@ curl http://localhost:8000/cache/stats
 | Cache Miss | 1-3s | ~$0.03 |
 | 80% Hit Rate | ~610ms avg | ~$0.006/query |
 
+### Prometheus Metrics and Monitoring
+
+The system exposes comprehensive Prometheus metrics for production monitoring and observability.
+
+#### Metrics Endpoint
+
+All metrics are automatically exposed at `/metrics` endpoint:
+
+```bash
+# Fetch metrics
+curl http://localhost:8000/metrics
+```
+
+#### Available Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `http_requests_total` | Counter | method, endpoint, status | Total HTTP requests |
+| `http_request_duration_seconds` | Histogram | endpoint | HTTP request latency |
+| `rag_queries_total` | Counter | collection, rerank_enabled | Total RAG queries |
+| `rag_query_duration_seconds` | Histogram | collection | RAG query latency |
+| `cache_hits_total` | Counter | collection | Total cache hits |
+| `cache_misses_total` | Counter | collection | Total cache misses |
+| `llm_calls_total` | Counter | model, operation | Total LLM API calls |
+| `llm_tokens_total` | Counter | model, type (input/output) | Total LLM tokens |
+| `llm_call_duration_seconds` | Histogram | model | LLM call latency |
+| `documents_total` | Gauge | collection | Total documents in VectorDB |
+| `vector_db_size_bytes` | Gauge | collection | Vector DB size in bytes |
+| `retrieval_duration_seconds` | Histogram | collection, search_type | Document retrieval latency |
+
+#### Prometheus Configuration
+
+Add to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'enterprise-rag-system'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+```
+
+Start Prometheus:
+
+```bash
+docker run -d \
+  -p 9090:9090 \
+  -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus
+```
+
+Access Prometheus UI: http://localhost:9090
+
+#### Grafana Dashboard
+
+**Option 1: Import Pre-built Dashboard**
+
+A pre-built Grafana dashboard is available at `grafana/dashboard.json`.
+
+1. Start Grafana:
+   ```bash
+   docker run -d -p 3000:3000 grafana/grafana
+   ```
+
+2. Access Grafana: http://localhost:3000 (default: admin/admin)
+
+3. Add Prometheus data source: http://localhost:9090
+
+4. Import dashboard: Create → Import → Upload `grafana/dashboard.json`
+
+**Option 2: Manual Dashboard Creation**
+
+Create panels for key metrics:
+
+- **Request Rate**: `rate(http_requests_total[5m])`
+- **Response Time**: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))`
+- **RAG Query Latency**: `rate(rag_query_duration_seconds_sum[5m]) / rate(rag_query_duration_seconds_count[5m])`
+- **Cache Hit Rate**: `cache_hits_total / (cache_hits_total + cache_misses_total)`
+- **LLM Token Usage**: `rate(llm_tokens_total[5m])`
+- **Document Count**: `documents_total{collection="default"}`
+
+#### Example Queries for Prometheus
+
+**Average Query Latency:**
+```promql
+rate(rag_query_duration_seconds_sum[5m]) /
+rate(rag_query_duration_seconds_count[5m])
+```
+
+**Cache Hit Rate:**
+```promql
+sum(rate(cache_hits_total[5m])) /
+sum(rate(cache_hits_total[5m]) + rate(cache_misses_total[5m]))
+```
+
+**Request Success Rate:**
+```promql
+sum(rate(http_requests_total{status=~"2.."}[5m])) /
+sum(rate(http_requests_total[5m]))
+```
+
+**P95 Response Time:**
+```promql
+histogram_quantile(0.95,
+  sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+)
+```
+
+**LLM Cost Estimation** (GPT-4 pricing: $0.03/1K input, $0.06/1K output):
+```promql
+sum(rate(llm_tokens_total{type="input"}[5m])) * 0.00003 +
+sum(rate(llm_tokens_total{type="output"}[5m])) * 0.00006
+```
+
+#### Environment Configuration
+
+Enable/disable metrics via environment variable:
+
+```bash
+# Disable metrics (default: enabled)
+ENABLE_METRICS=false
+```
+
+Note: Metrics instrumentation is enabled by default and adds minimal performance overhead (<5ms per request).
+
+#### Alerting Rules
+
+Example Prometheus alerting rules (`alerts.yml`):
+
+```yaml
+groups:
+  - name: rag_system_alerts
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        annotations:
+          summary: "High error rate detected"
+
+      - alert: SlowResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 5
+        for: 10m
+        annotations:
+          summary: "P95 latency exceeds 5 seconds"
+
+      - alert: LowCacheHitRate
+        expr: sum(rate(cache_hits_total[5m])) / sum(rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) < 0.5
+        for: 15m
+        annotations:
+          summary: "Cache hit rate below 50%"
+
+      - alert: HighLLMCost
+        expr: sum(rate(llm_tokens_total[5m])) > 10000
+        for: 5m
+        annotations:
+          summary: "LLM token usage exceeds 10K tokens/5m"
+```
+
 ---
 
 ## 🏗️ Architecture

@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
+from app.core import metrics
 from app.services.retrieval import HybridRetriever, RetrievalResult, ContextCompressor
 from app.services.reranker import Reranker
 from typing import TYPE_CHECKING
@@ -80,6 +81,7 @@ Answer:"""
     
     async def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """Call LLM with the prompt"""
+        llm_start_time = time.time()
         try:
             response = await self.llm_client.chat.completions.create(
                 model=self.llm_model,
@@ -96,6 +98,27 @@ Answer:"""
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
+
+            # Track LLM metrics
+            llm_latency = time.time() - llm_start_time
+            metrics.llm_calls.labels(
+                model=self.llm_model,
+                operation='generate'
+            ).inc()
+
+            metrics.llm_latency.labels(model=self.llm_model).observe(llm_latency)
+
+            # Track token usage
+            if hasattr(response, 'usage') and response.usage:
+                metrics.llm_tokens.labels(
+                    model=self.llm_model,
+                    type='input'
+                ).inc(response.usage.prompt_tokens)
+
+                metrics.llm_tokens.labels(
+                    model=self.llm_model,
+                    type='output'
+                ).inc(response.usage.completion_tokens)
 
             return {
                 'answer': response.choices[0].message.content,
@@ -157,6 +180,12 @@ Answer:"""
         """
         start_time = time.time()
 
+        # Track query counter
+        metrics.rag_query_counter.labels(
+            collection=collection,
+            rerank_enabled=rerank
+        ).inc()
+
         # Check cache first
         cache_key = None
         if self.cache:
@@ -165,13 +194,18 @@ Answer:"""
 
             if cached_result:
                 logger.info(f"Cache hit for query: {question[:50]}...")
+                metrics.cache_hits.labels(collection=collection).inc()
                 # Reconstruct RAGResponse from cached dict
                 return RAGResponse(**cached_result)
             else:
                 logger.debug(f"Cache miss for query: {question[:50]}...")
+                metrics.cache_misses.labels(collection=collection).inc()
 
         # Step 1: Retrieve relevant documents
         logger.debug(f"Retrieving documents for: {question} from collection: {collection}")
+
+        # Track retrieval metrics
+        retrieval_start = time.time()
 
         # If reranking is enabled, retrieve more candidates (top 50)
         retrieval_candidates = self.retriever.retrieve(
@@ -181,6 +215,13 @@ Answer:"""
             filter_dict=filter_dict,
             collection=collection
         )
+
+        retrieval_latency = time.time() - retrieval_start
+        search_type = 'hybrid' if use_hybrid else 'vector'
+        metrics.retrieval_latency.labels(
+            collection=collection,
+            search_type=search_type
+        ).observe(retrieval_latency)
 
         # Step 1.5: Re-rank if enabled and reranker is available
         if rerank and self.reranker and retrieval_candidates:
@@ -238,6 +279,10 @@ Answer:"""
         latency_ms = int((time.time() - start_time) * 1000)
 
         logger.debug(f"Generated answer in {latency_ms}ms")
+
+        # Track query latency
+        query_latency = latency_ms / 1000.0  # Convert to seconds
+        metrics.rag_query_latency.labels(collection=collection).observe(query_latency)
 
         response = RAGResponse(
             answer=llm_response['answer'],

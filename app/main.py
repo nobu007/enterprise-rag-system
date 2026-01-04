@@ -17,11 +17,13 @@ from app.core.embeddings import get_embedding_model
 from app.core.logging_config import setup_logging, get_logger
 from app.core.rate_limit import limiter
 from app.core.cache import CacheManager
+from app.core import metrics
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
+from prometheus_fastapi_instrumentator import Instrumentator
 
 
 # Setup logging first
@@ -104,6 +106,24 @@ app = FastAPI(
     description="Production-grade RAG pipeline for enterprise knowledge bases",
     lifespan=lifespan
 )
+
+# Setup Prometheus instrumentation
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_group_untemplated=True,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics"],
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="http_requests_inprogress",
+)
+instrumentator.instrument(app).expose(app, endpoint="/metrics")
+
+# Set application info
+metrics.app_info.info({
+    'version': settings.app_version,
+    'name': settings.app_name
+})
 
 
 async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):

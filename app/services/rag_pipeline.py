@@ -10,10 +10,12 @@ import time
 import openai
 
 from app.core.config import get_settings
+from app.core.logging_config import get_logger
 from app.services.retrieval import HybridRetriever, RetrievalResult, ContextCompressor
 
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -142,16 +144,16 @@ Answer:"""
             RAGResponse with answer and metadata
         """
         start_time = time.time()
-        
+
         # Step 1: Retrieve relevant documents
-        print(f"🔍 Retrieving documents for: {question}")
+        logger.debug(f"Retrieving documents for: {question}")
         retrieval_results = self.retriever.retrieve(
             query=question,
             top_k=top_k,
             use_hybrid=use_hybrid,
             filter_dict=filter_dict
         )
-        
+
         if not retrieval_results:
             return RAGResponse(
                 answer="I couldn't find any relevant information to answer your question.",
@@ -161,17 +163,17 @@ Answer:"""
                 tokens_used=0,
                 retrieval_results=[]
             )
-        
-        print(f"✅ Retrieved {len(retrieval_results)} documents")
-        
+
+        logger.debug(f"Retrieved {len(retrieval_results)} documents")
+
         # Step 2: Compress context
         context = self.compressor.compress(question, retrieval_results)
-        
+
         # Step 3: Build prompt
         prompt = self._build_prompt(question, context)
-        
+
         # Step 4: Call LLM
-        print(f"🤖 Generating answer with {self.llm_model}")
+        logger.debug(f"Generating answer with {self.llm_model}")
         llm_response = self._call_llm(prompt)
         
         # Step 5: Calculate confidence
@@ -189,9 +191,9 @@ Answer:"""
             })
         
         latency_ms = int((time.time() - start_time) * 1000)
-        
-        print(f"✅ Generated answer in {latency_ms}ms")
-        
+
+        logger.debug(f"Generated answer in {latency_ms}ms")
+
         return RAGResponse(
             answer=llm_response['answer'],
             sources=sources,
@@ -204,13 +206,13 @@ Answer:"""
     def batch_query(self, questions: List[str], **kwargs) -> List[RAGResponse]:
         """Process multiple questions"""
         responses = []
-        
+
         for question in questions:
             try:
                 response = self.query(question, **kwargs)
                 responses.append(response)
             except Exception as e:
-                print(f"❌ Error processing question '{question}': {e}")
+                logger.error(f"Error processing question '{question}': {e}")
                 responses.append(RAGResponse(
                     answer=f"Error: {str(e)}",
                     sources=[],
@@ -219,7 +221,7 @@ Answer:"""
                     tokens_used=0,
                     retrieval_results=[]
                 ))
-        
+
         return responses
 
 

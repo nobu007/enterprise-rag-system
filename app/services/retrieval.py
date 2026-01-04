@@ -8,7 +8,11 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from app.core.vectordb import VectorDB, SearchResult
 from app.core.embeddings import EmbeddingModel
+from app.core.logging_config import get_logger
 from app.services.document_loader import Document
+
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -57,12 +61,12 @@ class HybridRetriever:
             
             self.bm25_index = BM25Okapi(tokenized_docs)
             self.bm25_documents = documents
-            
-            print(f"✅ Built BM25 index with {len(documents)} documents")
-        
+
+            logger.info(f"Built BM25 index with {len(documents)} documents")
+
         except ImportError:
-            print("⚠️  rank-bm25 not installed. Keyword search disabled.")
-            print("   Install with: pip install rank-bm25")
+            logger.warning("rank-bm25 not installed. Keyword search disabled.")
+            logger.warning("Install with: pip install rank-bm25")
     
     def semantic_search(
         self,

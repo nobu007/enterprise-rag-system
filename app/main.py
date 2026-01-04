@@ -4,18 +4,24 @@ FastAPI Application Entry Point
 This is the main application file that sets up the FastAPI server.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
+import uuid
 
 from app.core.config import get_settings
 from app.core.vectordb import get_vector_db
 from app.core.embeddings import get_embedding_model
+from app.core.logging_config import setup_logging, get_logger
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
 
+
+# Setup logging first
+setup_logging()
+logger = get_logger(__name__)
 
 settings = get_settings()
 
@@ -28,47 +34,47 @@ _rag_pipeline: RAGPipeline = None
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown"""
     # Startup
-    print("🚀 Starting Enterprise RAG System...")
-    
+    logger.info("Starting Enterprise RAG System...")
+
     global _rag_pipeline
-    
+
     try:
         # Initialize components
-        print("📊 Initializing vector database...")
+        logger.info("Initializing vector database...")
         vector_db = get_vector_db(
             db_type="faiss",
             index_path="./data/faiss_index.bin"
         )
         vector_db.connect()
-        
-        print("🧠 Initializing embedding model...")
+
+        logger.info("Initializing embedding model...")
         embedding_model = get_embedding_model()
-        
-        print("🔍 Initializing retriever...")
+
+        logger.info("Initializing retriever...")
         retriever = HybridRetriever(
             vector_db=vector_db,
             embedding_model=embedding_model,
             alpha=settings.hybrid_search_alpha
         )
-        
-        print("🤖 Initializing RAG pipeline...")
+
+        logger.info("Initializing RAG pipeline...")
         _rag_pipeline = RAGPipeline(
             retriever=retriever,
             llm_model=settings.llm_model,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens
         )
-        
-        print("✅ Enterprise RAG System ready!")
-        
+
+        logger.info("Enterprise RAG System ready!")
+
     except Exception as e:
-        print(f"❌ Initialization failed: {e}")
-        print("⚠️  Some features may not work correctly")
-    
+        logger.error(f"Initialization failed: {e}")
+        logger.warning("Some features may not work correctly")
+
     yield
-    
+
     # Shutdown
-    print("👋 Shutting down Enterprise RAG System...")
+    logger.info("Shutting down Enterprise RAG System...")
 
 
 # Create FastAPI app
@@ -88,6 +94,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_request_id_middleware(request: Request, call_next):
+    """
+    Middleware to add unique request ID to each request for tracing.
+    """
+    # Generate or use existing request ID from header
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+
+    # Store in request state for access in endpoints
+    request.state.request_id = request_id
+
+    # Add request ID to log context
+    import logging
+    from app.core.logging_config import RequestIDFilter
+
+    # Create a custom filter for this request
+    class RequestContextFilter(logging.Filter):
+        def __init__(self, req_id):
+            super().__init__()
+            self.req_id = req_id
+
+        def filter(self, record):
+            record.request_id = self.req_id
+            return True
+
+    # Add filter to all loggers for this request
+    context_filter = RequestContextFilter(request_id)
+    root_logger = logging.getLogger()
+    root_logger.addFilter(context_filter)
+
+    try:
+        response = await call_next(request)
+        # Add request ID to response header
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        # Clean up filter after request
+        root_logger.removeFilter(context_filter)
 
 
 # Include routers

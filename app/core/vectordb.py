@@ -10,6 +10,11 @@ from abc import ABC, abstractmethod
 import numpy as np
 from dataclasses import dataclass
 
+from app.core.logging_config import get_logger
+
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class SearchResult:
@@ -86,8 +91,8 @@ class PineconeVectorDB(VectorDB):
                 raise ValueError(f"Index '{self.index_name}' does not exist")
             
             self.index = pinecone.Index(self.index_name)
-            print(f"✅ Connected to Pinecone index: {self.index_name}")
-            
+            logger.info(f"Connected to Pinecone index: {self.index_name}")
+
         except ImportError:
             raise ImportError("pinecone-client not installed. Run: pip install pinecone-client")
         except Exception as e:
@@ -99,9 +104,9 @@ class PineconeVectorDB(VectorDB):
             import pinecone
             
             if self.index_name in pinecone.list_indexes():
-                print(f"⚠️  Index '{self.index_name}' already exists")
+                logger.warning(f"Index '{self.index_name}' already exists")
                 return
-            
+
             pinecone.create_index(
                 name=self.index_name,
                 dimension=dimension,
@@ -109,9 +114,9 @@ class PineconeVectorDB(VectorDB):
                 pods=1,
                 pod_type="p1.x1"
             )
-            print(f"✅ Created Pinecone index: {self.index_name}")
+            logger.info(f"Created Pinecone index: {self.index_name}")
             self.connect()
-            
+
         except Exception as e:
             raise RuntimeError(f"Failed to create index: {e}")
     
@@ -136,8 +141,8 @@ class PineconeVectorDB(VectorDB):
         for i in range(0, len(items), batch_size):
             batch = items[i:i + batch_size]
             self.index.upsert(vectors=batch)
-        
-        print(f"✅ Upserted {len(items)} vectors")
+
+        logger.info(f"Upserted {len(items)} vectors")
     
     def search(
         self,
@@ -171,9 +176,9 @@ class PineconeVectorDB(VectorDB):
         """Delete vectors from Pinecone"""
         if not self.index:
             raise RuntimeError("Not connected to Pinecone. Call connect() first.")
-        
+
         self.index.delete(ids=ids)
-        print(f"✅ Deleted {len(ids)} vectors")
+        logger.info(f"Deleted {len(ids)} vectors")
     
     def get_stats(self) -> Dict[str, Any]:
         """Get Pinecone index statistics"""
@@ -202,13 +207,14 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
-            
+            import os
+
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
-                print(f"✅ Loaded FAISS index from: {self.index_path}")
+                logger.info(f"Loaded FAISS index from: {self.index_path}")
             else:
-                print("⚠️  No existing FAISS index found")
-        
+                logger.warning("No existing FAISS index found")
+
         except ImportError:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
     
@@ -223,9 +229,9 @@ class FAISSVectorDB(VectorDB):
                 self.index = faiss.IndexFlatL2(dimension)
             else:
                 raise ValueError(f"Unsupported metric: {metric}")
-            
-            print(f"✅ Created FAISS index with dimension: {dimension}")
-        
+
+            logger.info(f"Created FAISS index with dimension: {dimension}")
+
         except ImportError:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
     
@@ -255,8 +261,8 @@ class FAISSVectorDB(VectorDB):
             self.id_to_idx[id_] = idx
             self.idx_to_id[idx] = id_
             self.metadata_store[id_] = meta
-        
-        print(f"✅ Upserted {len(vectors)} vectors")
+
+        logger.info(f"Upserted {len(vectors)} vectors")
     
     def search(
         self,
@@ -295,7 +301,7 @@ class FAISSVectorDB(VectorDB):
     
     def delete(self, ids: List[str]) -> None:
         """Delete vectors from FAISS (not directly supported, requires rebuild)"""
-        print("⚠️  FAISS does not support direct deletion. Index needs to be rebuilt.")
+        logger.warning("FAISS does not support direct deletion. Index needs to be rebuilt.")
     
     def get_stats(self) -> Dict[str, Any]:
         """Get FAISS index statistics"""
@@ -325,8 +331,8 @@ class FAISSVectorDB(VectorDB):
                 'id_to_idx': self.id_to_idx,
                 'idx_to_id': self.idx_to_id
             }, f)
-        
-        print(f"✅ Saved FAISS index to: {path}")
+
+        logger.info(f"Saved FAISS index to: {path}")
 
 
 def get_vector_db(db_type: str = "faiss", **kwargs) -> VectorDB:

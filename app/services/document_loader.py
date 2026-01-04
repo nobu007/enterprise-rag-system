@@ -9,6 +9,11 @@ from pathlib import Path
 from dataclasses import dataclass
 import hashlib
 
+from app.core.logging_config import get_logger
+
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class Document:
@@ -127,14 +132,14 @@ class DocumentLoader:
         
         # Filter by extension
         files = [f for f in files if f.suffix.lower() in file_extensions]
-        
-        print(f"Found {len(files)} files to process")
-        
+
+        logger.info(f"Found {len(files)} files to process")
+
         # Load each file
         for file_path in files:
             try:
                 ext = file_path.suffix.lower()
-                
+
                 if ext == '.pdf':
                     docs = DocumentLoader.load_pdf(str(file_path))
                     documents.extend(docs)
@@ -144,13 +149,13 @@ class DocumentLoader:
                 elif ext == '.txt':
                     doc = DocumentLoader.load_text_file(str(file_path))
                     documents.append(doc)
-                
-                print(f"✅ Loaded: {file_path.name}")
-            
+
+                logger.debug(f"Loaded: {file_path.name}")
+
             except Exception as e:
-                print(f"❌ Failed to load {file_path.name}: {e}")
-        
-        print(f"Successfully loaded {len(documents)} documents")
+                logger.error(f"Failed to load {file_path.name}: {e}")
+
+        logger.info(f"Successfully loaded {len(documents)} documents")
         return documents
 
 

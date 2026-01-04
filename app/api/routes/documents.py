@@ -11,6 +11,10 @@ from pathlib import Path
 import tempfile
 import os
 
+from app.core.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
@@ -56,9 +60,9 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         from app.core.config import get_settings
         
         settings = get_settings()
-        
+
         # Load documents
-        print(f"📂 Loading documents from: {request.source_path}")
+        logger.info(f"Loading documents from: {request.source_path}")
         documents = DocumentLoader.load_directory(request.source_path)
         
         if not documents:
@@ -73,9 +77,9 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
             chunk_overlap=request.chunk_overlap
         )
         chunks = splitter.split_documents(documents)
-        
+
         # Generate embeddings
-        print(f"🧠 Generating embeddings for {len(chunks)} chunks")
+        logger.info(f"Generating embeddings for {len(chunks)} chunks")
         embedding_model = get_embedding_model()
         texts = [chunk.content for chunk in chunks]
         embeddings = embedding_model.embed_texts(texts)

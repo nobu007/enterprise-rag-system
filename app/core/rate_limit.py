@@ -29,8 +29,47 @@ def get_user_id(request: Request) -> str:
     if api_key:
         return f"key:{api_key}"
 
-    # Fallback to IP address
-    return f"ip:{get_remote_address(request)}"
+    # Get real client IP (handles proxy/X-Forwarded-For headers)
+    client_ip = get_client_ip(request)
+    return f"ip:{client_ip}"
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Get the real client IP address, considering proxy headers.
+
+    This function checks multiple headers in order of reliability:
+    1. X-Forwarded-For (standard proxy header)
+    2. X-Real-IP (Nginx/Apache header)
+    3. CF-Connecting-IP (Cloudflare)
+    4. Direct connection (request.client.host)
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Client IP address as string
+    """
+    # X-Forwarded-For header (can contain multiple IPs)
+    # Format: X-Forwarded-For: client, proxy1, proxy2
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        # Take the first IP (original client)
+        client_ip = x_forwarded_for.split(",")[0].strip()
+        return client_ip
+
+    # X-Real-IP header (common in Nginx/Apache)
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip
+
+    # Cloudflare connecting IP
+    cf_connecting_ip = request.headers.get("CF-Connecting-IP")
+    if cf_connecting_ip:
+        return cf_connecting_ip
+
+    # Fallback to direct connection IP
+    return request.client.host if request.client else "unknown"
 
 
 def get_identifier(request: Request) -> str:

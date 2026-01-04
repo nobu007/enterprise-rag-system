@@ -66,6 +66,10 @@ Modern enterprises face critical challenges in knowledge management:
   - Multi-tenancy support
   - Audit logging
   - PII detection and redaction
+  - **Security validation middleware** (XSS, SQL injection, path traversal detection)
+  - **Request size limits** (DoS protection)
+  - **Security headers** (CSP, HSTS, X-Frame-Options, etc.)
+  - **IP-based rate limiting** with proxy header support
 
 ---
 
@@ -769,6 +773,136 @@ ARIZE_API_KEY=...
 - `ALLOWED_ORIGINS`: In production, set this to your actual frontend domain(s). Never use `["*"]` in production.
 - For development, the default allows `localhost:8000` and `localhost:3000`
 - To configure multiple origins, separate them with commas: `https://example.com,https://api.example.com`
+
+## 🔒 Security Features
+
+This system implements comprehensive security measures to protect against common web vulnerabilities:
+
+### Request Validation Middleware
+
+The system includes a validation middleware that automatically checks all incoming requests:
+
+#### Threat Detection
+
+- **SQL Injection**: Detects and blocks SQL injection patterns
+  ```bash
+  # Blocked
+  curl -X POST http://localhost:8000/api/v1/query/ \
+    -H "Content-Type: application/json" \
+    -d '{"query": "1'\'' OR '\''1'\''='\''1"}'
+  # Returns: 400 Bad Request (SQL injection pattern detected)
+  ```
+
+- **XSS (Cross-Site Scripting)**: Blocks script injection attempts
+  ```bash
+  # Blocked
+  curl -X POST http://localhost:8000/api/v1/query/ \
+    -H "Content-Type: application/json" \
+    -d '{"query": "<script>alert(1)</script>"}'
+  # Returns: 400 Bad Request (Potentially malicious content)
+  ```
+
+- **Path Traversal**: Prevents directory traversal attacks
+  ```bash
+  # Blocked
+  curl -X POST http://localhost:8000/api/v1/query/ \
+    -H "Content-Type: application/json" \
+    -d '{"collection_name": "../../../etc/passwd"}'
+  # Returns: 400 Bad Request (Path traversal pattern detected)
+  ```
+
+- **Command Injection**: Detects command injection patterns
+  ```bash
+  # Blocked
+  curl -X POST http://localhost:8000/api/v1/query/ \
+    -H "Content-Type: application/json" \
+    -d '{"query": "file.txt; rm -rf /"}'
+  # Returns: 400 Bad Request (Command injection pattern detected)
+  ```
+
+#### DoS Protection
+
+- **Request Size Limits**: Maximum 10MB per request (configurable)
+  ```python
+  # In app/main.py
+  app.add_middleware(
+      ValidationMiddleware,
+      max_request_size=10 * 1024 * 1024  # 10MB
+  )
+  ```
+
+#### Security Headers
+
+All responses include comprehensive security headers:
+
+```bash
+curl -I http://localhost:8000/health
+
+# Response includes:
+# X-Content-Type-Options: nosniff
+# X-Frame-Options: DENY
+# X-XSS-Protection: 1; mode=block
+# Strict-Transport-Security: max-age=31536000; includeSubDomains
+# Content-Security-Policy: default-src 'self'; ...
+# Referrer-Policy: strict-origin-when-cross-origin
+# Permissions-Policy: geolocation=(), microphone=(), ...
+```
+
+### Rate Limiting
+
+Enhanced IP-based rate limiting with proxy support:
+
+- **API Key Tracking**: Uses API key if provided (for authenticated users)
+- **IP Detection**: Automatically detects real client IP through:
+  - `X-Forwarded-For` header (standard proxy)
+  - `X-Real-IP` header (Nginx/Apache)
+  - `CF-Connecting-IP` header (Cloudflare)
+  - Direct connection IP (fallback)
+
+```python
+# Rate limits by default:
+# /api/v1/query/ : 60 requests/minute
+# /api/v1/query/batch : 60 requests/minute
+# /api/v1/documents/ingest : 20 requests/minute
+# /health : 120 requests/minute
+```
+
+### Configuration
+
+Security features can be configured in `app/main.py`:
+
+```python
+# Disable security validation (not recommended)
+app.add_middleware(
+    ValidationMiddleware,
+    enable_security_validation=False  # ⚠️ Use with caution
+)
+
+# Adjust request size limit
+app.add_middleware(
+    ValidationMiddleware,
+    max_request_size=5 * 1024 * 1024  # 5MB
+)
+```
+
+### Testing Security Features
+
+```bash
+# Run security tests
+pytest tests/unit/test_validation_middleware.py -v
+
+# Test specific security feature
+pytest tests/unit/test_validation_middleware.py::TestSecurityValidator::test_detect_xss_true -v
+```
+
+### Best Practices
+
+1. **Keep Dependencies Updated**: Regularly update `requirements.txt`
+2. **Use HTTPS in Production**: Enable TLS/SSL
+3. **Set Strong CORS Policies**: Never use `["*"]` in production
+4. **Monitor Logs**: Check for suspicious request patterns
+5. **Configure Appropriate Limits**: Adjust rate limits based on your needs
+6. **Use API Keys**: Implement proper authentication for production use
 
 ---
 

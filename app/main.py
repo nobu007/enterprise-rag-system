@@ -21,6 +21,7 @@ from app.core import metrics
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
+from app.middleware.validation import ValidationMiddleware
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -217,6 +218,15 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
+)
+
+# Add validation middleware for security
+# This should be added AFTER CORS middleware but BEFORE request processing
+app.add_middleware(
+    ValidationMiddleware,
+    max_request_size=10 * 1024 * 1024,  # 10MB limit
+    enable_security_validation=True,
+    log_suspicious=True
 )
 
 

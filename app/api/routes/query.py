@@ -43,27 +43,27 @@ class BatchQueryRequest(BaseModel):
 async def query(request: QueryRequest) -> QueryResponse:
     """
     Query the RAG system with a question
-    
+
     Args:
         request: Query request with question and parameters
-    
+
     Returns:
         QueryResponse with answer and sources
     """
     try:
         # Get RAG pipeline instance (should be injected via dependency)
         from app.main import get_rag_pipeline
-        
+
         pipeline = get_rag_pipeline()
-        
+
         # Execute query
-        result = pipeline.query(
+        result = await pipeline.query(
             question=request.query,
             top_k=request.top_k,
             use_hybrid=request.use_hybrid,
             filter_dict=request.filters
         )
-        
+
         return QueryResponse(
             answer=result.answer,
             sources=result.sources,
@@ -71,7 +71,7 @@ async def query(request: QueryRequest) -> QueryResponse:
             latency_ms=result.latency_ms,
             tokens_used=result.tokens_used
         )
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -83,24 +83,24 @@ async def query(request: QueryRequest) -> QueryResponse:
 async def batch_query(request: BatchQueryRequest) -> List[QueryResponse]:
     """
     Query the RAG system with multiple questions
-    
+
     Args:
         request: Batch query request
-    
+
     Returns:
         List of QueryResponse objects
     """
     try:
         from app.main import get_rag_pipeline
-        
+
         pipeline = get_rag_pipeline()
-        
+
         # Execute batch query
-        results = pipeline.batch_query(
+        results = await pipeline.batch_query(
             questions=request.queries,
             top_k=request.top_k
         )
-        
+
         responses = []
         for result in results:
             responses.append(QueryResponse(
@@ -110,9 +110,9 @@ async def batch_query(request: BatchQueryRequest) -> List[QueryResponse]:
                 latency_ms=result.latency_ms,
                 tokens_used=result.tokens_used
             ))
-        
+
         return responses
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

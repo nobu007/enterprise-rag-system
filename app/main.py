@@ -17,6 +17,7 @@ from app.core.logging_config import setup_logging, get_logger
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
+from openai import AsyncOpenAI
 
 
 # Setup logging first
@@ -28,6 +29,7 @@ settings = get_settings()
 
 # Global instances (initialized at startup)
 _rag_pipeline: RAGPipeline = None
+_openai_client: AsyncOpenAI = None
 
 
 @asynccontextmanager
@@ -36,9 +38,13 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Enterprise RAG System...")
 
-    global _rag_pipeline
+    global _rag_pipeline, _openai_client
 
     try:
+        # Initialize OpenAI client
+        logger.info("Initializing OpenAI async client...")
+        _openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+
         # Initialize components
         logger.info("Initializing vector database...")
         vector_db = get_vector_db(
@@ -60,6 +66,7 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing RAG pipeline...")
         _rag_pipeline = RAGPipeline(
             retriever=retriever,
+            llm_client=_openai_client,
             llm_model=settings.llm_model,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens

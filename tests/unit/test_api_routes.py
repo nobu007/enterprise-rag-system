@@ -6,7 +6,7 @@ and response format verification.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
@@ -18,6 +18,9 @@ from app.services.rag_pipeline import RAGResponse
 def mock_rag_pipeline():
     """Mock RAG pipeline instance"""
     pipeline = Mock()
+    # Set up async mocks
+    pipeline.query = AsyncMock()
+    pipeline.batch_query = AsyncMock()
     return pipeline
 
 
@@ -52,7 +55,9 @@ def client(mock_rag_pipeline, sample_rag_response):
 
     # Mock the get_rag_pipeline function - patch at import location
     with patch('app.main.get_rag_pipeline', return_value=mock_rag_pipeline):
+        # Set up the default return value for query method
         mock_rag_pipeline.query.return_value = sample_rag_response
+        mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
         yield TestClient(app)
 
 

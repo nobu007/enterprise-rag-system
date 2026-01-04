@@ -7,7 +7,7 @@ This module orchestrates the complete RAG workflow.
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import time
-import openai
+from openai import AsyncOpenAI
 
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
@@ -35,18 +35,17 @@ class RAGPipeline:
     def __init__(
         self,
         retriever: HybridRetriever,
+        llm_client: AsyncOpenAI,
         llm_model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 2048
     ):
         self.retriever = retriever
+        self.llm_client = llm_client
         self.llm_model = llm_model or settings.llm_model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.compressor = ContextCompressor(max_tokens=4000)
-        
-        # Set OpenAI API key
-        openai.api_key = settings.openai_api_key
     
     def _build_prompt(self, query: str, context: str) -> str:
         """Build prompt for LLM"""
@@ -70,10 +69,10 @@ Answer:"""
         
         return prompt
     
-    def _call_llm(self, prompt: str) -> Dict[str, Any]:
+    async def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """Call LLM with the prompt"""
         try:
-            response = openai.chat.completions.create(
+            response = await self.llm_client.chat.completions.create(
                 model=self.llm_model,
                 messages=[
                     {
@@ -88,13 +87,13 @@ Answer:"""
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
-            
+
             return {
                 'answer': response.choices[0].message.content,
                 'tokens_used': response.usage.total_tokens,
                 'finish_reason': response.choices[0].finish_reason
             }
-        
+
         except Exception as e:
             raise RuntimeError(f"LLM call failed: {e}")
     
@@ -124,7 +123,7 @@ Answer:"""
         
         return min(confidence, 1.0)
     
-    def query(
+    async def query(
         self,
         question: str,
         top_k: int = 5,
@@ -133,13 +132,13 @@ Answer:"""
     ) -> RAGResponse:
         """
         Execute complete RAG pipeline
-        
+
         Args:
             question: User's question
             top_k: Number of documents to retrieve
             use_hybrid: Whether to use hybrid search
             filter_dict: Optional metadata filters
-        
+
         Returns:
             RAGResponse with answer and metadata
         """
@@ -174,11 +173,11 @@ Answer:"""
 
         # Step 4: Call LLM
         logger.debug(f"Generating answer with {self.llm_model}")
-        llm_response = self._call_llm(prompt)
-        
+        llm_response = await self._call_llm(prompt)
+
         # Step 5: Calculate confidence
         confidence = self._calculate_confidence(retrieval_results, llm_response['answer'])
-        
+
         # Step 6: Prepare sources
         sources = []
         for i, result in enumerate(retrieval_results):
@@ -189,7 +188,7 @@ Answer:"""
                 'relevance_score': round(result.score, 3),
                 'text_preview': result.document[:200] + "..." if len(result.document) > 200 else result.document
             })
-        
+
         latency_ms = int((time.time() - start_time) * 1000)
 
         logger.debug(f"Generated answer in {latency_ms}ms")
@@ -203,13 +202,13 @@ Answer:"""
             retrieval_results=retrieval_results
         )
     
-    def batch_query(self, questions: List[str], **kwargs) -> List[RAGResponse]:
+    async def batch_query(self, questions: List[str], **kwargs) -> List[RAGResponse]:
         """Process multiple questions"""
         responses = []
 
         for question in questions:
             try:
-                response = self.query(question, **kwargs)
+                response = await self.query(question, **kwargs)
                 responses.append(response)
             except Exception as e:
                 logger.error(f"Error processing question '{question}': {e}")
@@ -227,8 +226,8 @@ Answer:"""
 
 class StreamingRAGPipeline(RAGPipeline):
     """RAG Pipeline with streaming support"""
-    
-    def stream_query(
+
+    async def stream_query(
         self,
         question: str,
         top_k: int = 5,
@@ -237,7 +236,7 @@ class StreamingRAGPipeline(RAGPipeline):
     ):
         """Stream response tokens as they're generated"""
         start_time = time.time()
-        
+
         # Retrieve documents
         retrieval_results = self.retriever.retrieve(
             query=question,
@@ -245,7 +244,7 @@ class StreamingRAGPipeline(RAGPipeline):
             use_hybrid=use_hybrid,
             filter_dict=filter_dict
         )
-        
+
         if not retrieval_results:
             yield {
                 'type': 'answer',
@@ -253,11 +252,11 @@ class StreamingRAGPipeline(RAGPipeline):
                 'done': True
             }
             return
-        
+
         # Compress context and build prompt
         context = self.compressor.compress(question, retrieval_results)
         prompt = self._build_prompt(question, context)
-        
+
         # Yield sources first
         yield {
             'type': 'sources',
@@ -269,10 +268,10 @@ class StreamingRAGPipeline(RAGPipeline):
                 for r in retrieval_results
             ]
         }
-        
+
         # Stream LLM response
         try:
-            stream = openai.chat.completions.create(
+            stream = await self.llm_client.chat.completions.create(
                 model=self.llm_model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
@@ -282,15 +281,15 @@ class StreamingRAGPipeline(RAGPipeline):
                 max_tokens=self.max_tokens,
                 stream=True
             )
-            
-            for chunk in stream:
+
+            async for chunk in stream:
                 if chunk.choices[0].delta.content:
                     yield {
                         'type': 'answer',
                         'content': chunk.choices[0].delta.content,
                         'done': False
                     }
-            
+
             # Final chunk
             yield {
                 'type': 'answer',
@@ -298,7 +297,7 @@ class StreamingRAGPipeline(RAGPipeline):
                 'done': True,
                 'latency_ms': int((time.time() - start_time) * 1000)
             }
-        
+
         except Exception as e:
             yield {
                 'type': 'error',

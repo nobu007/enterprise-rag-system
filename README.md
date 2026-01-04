@@ -61,6 +61,7 @@ Modern enterprises face critical challenges in knowledge management:
   - Cost tracking per query
 
 - **🔒 Enterprise-Ready**
+  - API rate limiting (per-key and IP-based)
   - Authentication and authorization
   - Multi-tenancy support
   - Audit logging
@@ -112,6 +113,46 @@ curl -X POST http://localhost:8000/query \
   "latency_ms": 2341,
   "tokens_used": 1245
 }
+```
+
+### Rate Limiting
+
+The API implements rate limiting to prevent abuse and ensure fair resource allocation:
+
+#### Default Rate Limits
+
+| Endpoint | Limit | Description |
+|----------|-------|-------------|
+| POST /api/v1/query/ | 60/minute | Query endpoint |
+| POST /api/v1/query/batch | 60/minute | Batch query endpoint |
+| POST /api/v1/ingest | 20/minute | Document ingestion (stricter) |
+| GET /health | 120/minute | Health checks (relaxed) |
+| GET / | 120/minute | Root endpoint |
+
+#### Rate Limiting Behavior
+
+- **Per-API Key Limits**: When using the `X-API-Key` header, each key has independent rate limits
+- **Per-IP Limits**: Without an API key, limits are applied per IP address
+- **429 Response**: When limits are exceeded, the API returns:
+  ```json
+  {
+    "error": "Rate limit exceeded",
+    "message": "Too many requests. Please try again later.",
+    "retry_after": "30"
+  }
+  ```
+
+#### Configuration
+
+Rate limiting can be configured via environment variables (see [Configuration](#-configuration)):
+
+```bash
+# Disable rate limiting (for development)
+RATE_LIMIT_ENABLED=false
+
+# Customize limits
+RATE_LIMIT_PER_MINUTE=100
+RATE_LIMIT_PER_HOUR=2000
 ```
 
 ---
@@ -284,6 +325,12 @@ CHROMA_PERSIST_DIR=./data/chroma
 
 # CORS (Security: specify allowed origins)
 ALLOWED_ORIGINS=http://localhost:8000,http://localhost:3000
+
+# Rate Limiting
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_PER_MINUTE=60
+RATE_LIMIT_PER_HOUR=1000
+RATE_LIMIT_BURST=10
 
 # Performance
 ENABLE_CACHING=true

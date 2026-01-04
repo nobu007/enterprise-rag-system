@@ -2,19 +2,23 @@
 Document ingestion endpoints
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import Dict
 from datetime import datetime
+
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 
 
 @router.post("/ingest")
-async def ingest_documents(source_path: str, collection: str = "default") -> Dict:
+@limiter.limit("20/minute")
+async def ingest_documents(request: Request, source_path: str, collection: str = "default") -> Dict:
     """
     Ingest documents from a source path
 
     Args:
+        request: FastAPI Request object
         source_path: Path to documents
         collection: Collection name
 

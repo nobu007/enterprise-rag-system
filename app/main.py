@@ -6,6 +6,7 @@ This is the main application file that sets up the FastAPI server.
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
 import uuid
@@ -14,10 +15,12 @@ from app.core.config import get_settings
 from app.core.vectordb import get_vector_db
 from app.core.embeddings import get_embedding_model
 from app.core.logging_config import setup_logging, get_logger
+from app.core.rate_limit import limiter
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
 from openai import AsyncOpenAI
+from slowapi.errors import RateLimitExceeded
 
 
 # Setup logging first
@@ -88,6 +91,33 @@ app = FastAPI(
 )
 
 
+async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """
+    Custom error handler for rate limit exceeded.
+
+    Args:
+        request: FastAPI request object
+        exc: RateLimitExceeded exception
+
+    Returns:
+        JSONResponse with 429 status code
+    """
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "Rate limit exceeded",
+            "message": "Too many requests. Please try again later.",
+            "retry_after": str(exc.retry_after) if hasattr(exc, 'retry_after') else None
+        },
+        headers={"Retry-After": str(exc.retry_after)} if hasattr(exc, 'retry_after') else {}
+    )
+
+
+# Configure rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -145,7 +175,8 @@ app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
 
 
 @app.get("/")
-async def root():
+@limiter.limit("120/minute")
+async def root(request: Request):
     """Root endpoint"""
     return {
         "name": settings.app_name,
@@ -157,7 +188,8 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+@limiter.limit("120/minute")
+async def health_check(request: Request):
     """Health check endpoint"""
     return {
         "status": "healthy",

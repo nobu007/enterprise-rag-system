@@ -4,12 +4,13 @@ Query API Routes
 This module defines API endpoints for querying the RAG system.
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
 from app.services.rag_pipeline import RAGResponse, RAGPipeline
 from app.api.dependencies import get_rag_pipeline
+from app.core.rate_limit import limiter
 
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -42,15 +43,18 @@ class BatchQueryRequest(BaseModel):
 
 
 @router.post("/", response_model=QueryResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("60/minute")
 async def query(
-    request: QueryRequest,
+    request: Request,
+    query_req: QueryRequest,
     pipeline: RAGPipeline = Depends(get_rag_pipeline)
 ) -> QueryResponse:
     """
     Query the RAG system with a question
 
     Args:
-        request: Query request with question and parameters
+        request: FastAPI Request object
+        query_req: Query request with question and parameters
         pipeline: RAG pipeline injected via dependency injection
 
     Returns:
@@ -59,12 +63,12 @@ async def query(
     try:
         # Execute query
         result = await pipeline.query(
-            question=request.query,
-            top_k=request.top_k,
-            use_hybrid=request.use_hybrid,
-            filter_dict=request.filters,
-            rerank=request.rerank,
-            collection=request.collection or "default"
+            question=query_req.query,
+            top_k=query_req.top_k,
+            use_hybrid=query_req.use_hybrid,
+            filter_dict=query_req.filters,
+            rerank=query_req.rerank,
+            collection=query_req.collection or "default"
         )
 
         return QueryResponse(
@@ -83,15 +87,18 @@ async def query(
 
 
 @router.post("/batch", response_model=List[QueryResponse])
+@limiter.limit("60/minute")
 async def batch_query(
-    request: BatchQueryRequest,
+    request: Request,
+    batch_req: BatchQueryRequest,
     pipeline: RAGPipeline = Depends(get_rag_pipeline)
 ) -> List[QueryResponse]:
     """
     Query the RAG system with multiple questions
 
     Args:
-        request: Batch query request
+        request: FastAPI Request object
+        batch_req: Batch query request
         pipeline: RAG pipeline injected via dependency injection
 
     Returns:
@@ -100,9 +107,9 @@ async def batch_query(
     try:
         # Execute batch query
         results = await pipeline.batch_query(
-            questions=request.queries,
-            top_k=request.top_k,
-            collection=request.collection or "default"
+            questions=batch_req.queries,
+            top_k=batch_req.top_k,
+            collection=batch_req.collection or "default"
         )
 
         responses = []

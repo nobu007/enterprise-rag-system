@@ -2,14 +2,17 @@
 Health check endpoints
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from typing import Dict
+
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 
 
 @router.get("/health")
-async def health_check() -> Dict[str, str]:
+@limiter.limit("120/minute")
+async def health_check(request: Request) -> Dict[str, str]:
     """Health check endpoint"""
     return {
         "status": "healthy",
@@ -18,7 +21,8 @@ async def health_check() -> Dict[str, str]:
 
 
 @router.get("/health/detailed")
-async def detailed_health_check() -> Dict[str, Dict[str, str]]:
+@limiter.limit("120/minute")
+async def detailed_health_check(request: Request) -> Dict[str, Dict[str, str]]:
     """Detailed health check with service status"""
     return {
         "status": "healthy",

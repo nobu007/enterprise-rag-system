@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = Field(False, env="DEBUG")
 
+    # Rate Limiting
+    rate_limit_enabled: bool = Field(True, env="RATE_LIMIT_ENABLED")
+    rate_limit_per_minute: int = Field(60, env="RATE_LIMIT_PER_MINUTE")
+    rate_limit_per_hour: int = Field(1000, env="RATE_LIMIT_PER_HOUR")
+    rate_limit_burst: int = Field(10, env="RATE_LIMIT_BURST")
+
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
         """Parse comma-separated origins into a list"""

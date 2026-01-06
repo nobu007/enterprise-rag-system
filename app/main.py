@@ -22,6 +22,7 @@ from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
 from app.middleware.validation import ValidationMiddleware
+from app.middleware.request_id import RequestIDMiddleware
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -220,6 +221,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add request ID middleware for distributed tracing
+# This should be added BEFORE validation middleware to ensure all requests are tracked
+app.add_middleware(RequestIDMiddleware)
+
 # Add validation middleware for security
 # This should be added AFTER CORS middleware but BEFORE request processing
 app.add_middleware(
@@ -228,46 +233,6 @@ app.add_middleware(
     enable_security_validation=True,
     log_suspicious=True
 )
-
-
-@app.middleware("http")
-async def add_request_id_middleware(request: Request, call_next):
-    """
-    Middleware to add unique request ID to each request for tracing.
-    """
-    # Generate or use existing request ID from header
-    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-
-    # Store in request state for access in endpoints
-    request.state.request_id = request_id
-
-    # Add request ID to log context
-    import logging
-    from app.core.logging_config import RequestIDFilter
-
-    # Create a custom filter for this request
-    class RequestContextFilter(logging.Filter):
-        def __init__(self, req_id):
-            super().__init__()
-            self.req_id = req_id
-
-        def filter(self, record):
-            record.request_id = self.req_id
-            return True
-
-    # Add filter to all loggers for this request
-    context_filter = RequestContextFilter(request_id)
-    root_logger = logging.getLogger()
-    root_logger.addFilter(context_filter)
-
-    try:
-        response = await call_next(request)
-        # Add request ID to response header
-        response.headers["X-Request-ID"] = request_id
-        return response
-    finally:
-        # Clean up filter after request
-        root_logger.removeFilter(context_filter)
 
 
 # Include routers

@@ -71,6 +71,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **Security headers** (CSP, HSTS, X-Frame-Options, etc.)
   - **IP-based rate limiting** with proxy header support
   - **PostgreSQL connection pooling** with asyncpg for production workloads
+  - **Request ID tracking** for distributed tracing and debugging
 
 ---
 
@@ -119,6 +120,27 @@ curl -X POST http://localhost:8000/query \
   "tokens_used": 1245
 }
 ```
+
+### Request Tracking
+
+Every API request includes a unique `X-Request-ID` header for distributed tracing and debugging:
+
+```bash
+# Making a request with a custom request ID
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: my-custom-request-id-123" \
+  -d '{"query": "test query"}'
+
+# The same request ID will be returned in the response header
+# Response headers include: X-Request-ID: my-custom-request-id-123
+```
+
+**Features:**
+- **Automatic Generation**: If no `X-Request-ID` is provided, a UUID v4 is automatically generated
+- **Request/Response Correlation**: The same ID is present in both request and response headers
+- **Log Integration**: Request IDs are automatically added to all log records for the request
+- **Debugging**: Use request IDs to trace requests across distributed systems and logs
 
 ### Batch Document Processing
 

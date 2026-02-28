@@ -218,7 +218,7 @@ app.add_middleware(
     allow_origins=settings.ALLOWED_ORIGINS,  # Use configured origins
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
+    allow_headers=settings.ALLOWED_HEADERS_LIST,  # Security: restrict allowed headers
 )
 
 # Add request ID middleware for distributed tracing
@@ -229,7 +229,7 @@ app.add_middleware(RequestIDMiddleware)
 # This should be added AFTER CORS middleware but BEFORE request processing
 app.add_middleware(
     ValidationMiddleware,
-    max_request_size=10 * 1024 * 1024,  # 10MB limit
+    max_request_size=settings.max_request_size,  # Configurable via MAX_REQUEST_SIZE env
     enable_security_validation=True,
     log_suspicious=True
 )
@@ -267,7 +267,7 @@ async def health_check(request: Request):
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=settings.server_host,
+        port=settings.server_port,
         reload=settings.debug
     )

@@ -32,11 +32,11 @@ class Settings(BaseSettings):
         "http://localhost:8000,http://localhost:3000",
         env="ALLOWED_ORIGINS"
     )
-    
+
     # Embedding Configuration
     embedding_model: str = Field("text-embedding-ada-002", env="EMBEDDING_MODEL")
     embedding_dimension: int = Field(1536, env="EMBEDDING_DIMENSION")
-    
+
     # Search Configuration
     hybrid_search_alpha: float = Field(0.5, env="HYBRID_SEARCH_ALPHA")
     top_k_results: int = Field(5, env="TOP_K_RESULTS")
@@ -44,27 +44,40 @@ class Settings(BaseSettings):
         "cross-encoder/ms-marco-MiniLM-L-12-v2",
         env="RERANKER_MODEL"
     )
-    
+
     # LLM Configuration
     llm_model: str = Field("gpt-4-turbo-preview", env="LLM_MODEL")
     llm_temperature: float = Field(0.7, env="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(2048, env="LLM_MAX_TOKENS")
-    
+
     # Performance
     enable_caching: bool = Field(True, env="ENABLE_CACHING")
     cache_ttl_seconds: int = Field(3600, env="CACHE_TTL_SECONDS")
     max_workers: int = Field(4, env="MAX_WORKERS")
-    
+
     # Monitoring
     langsmith_api_key: Optional[str] = Field(None, env="LANGSMITH_API_KEY")
     langsmith_project: str = Field("enterprise-rag", env="LANGSMITH_PROJECT")
     arize_api_key: Optional[str] = Field(None, env="ARIZE_API_KEY")
     enable_metrics: bool = Field(True, env="ENABLE_METRICS")
-    
+
     # Application
     app_name: str = "Enterprise RAG System"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     debug: bool = Field(False, env="DEBUG")
+
+    # Server
+    server_host: str = Field("0.0.0.0", env="SERVER_HOST")
+    server_port: int = Field(8000, env="SERVER_PORT")
+
+    # CORS Headers (security: restrict allowed headers)
+    allowed_headers: str = Field(
+        "Content-Type,Authorization,X-API-Key,X-Request-ID",
+        env="ALLOWED_HEADERS",
+    )
+
+    # Request size limit (bytes)
+    max_request_size: int = Field(10 * 1024 * 1024, env="MAX_REQUEST_SIZE")
 
     # Rate Limiting
     rate_limit_enabled: bool = Field(True, env="RATE_LIMIT_ENABLED")
@@ -98,6 +111,11 @@ class Settings(BaseSettings):
     def ALLOWED_ORIGINS(self) -> List[str]:
         """Parse comma-separated origins into a list"""
         return [origin.strip() for origin in self.allowed_origins.split(",")]
+
+    @property
+    def ALLOWED_HEADERS_LIST(self) -> List[str]:
+        """Parse comma-separated headers into a list"""
+        return [h.strip() for h in self.allowed_headers.split(",")]
 
     class Config:
         env_file = ".env"

@@ -41,6 +41,8 @@ def mock_chat_completion():
     mock_response.choices[0].message.content = 'This is a test answer based on the context.'
     mock_response.choices[0].finish_reason = 'stop'
     mock_response.usage.total_tokens = 100
+    mock_response.usage.prompt_tokens = 80
+    mock_response.usage.completion_tokens = 20
     return mock_response
 
 

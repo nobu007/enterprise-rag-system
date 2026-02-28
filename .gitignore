@@ -22,3 +22,4 @@ _bmad/
 # UCG Temp
 .ucg-temp/
 .ucg_hang_detection.json
+worktrees/

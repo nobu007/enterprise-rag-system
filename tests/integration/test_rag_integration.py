@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.fixture
@@ -59,6 +60,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
     pipeline = RAGPipeline(
         retriever=retriever,
+        llm_client=AsyncMock(),
         llm_model="gpt-4",
         temperature=0.7,
         max_tokens=500
@@ -89,11 +91,12 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
 
-    # Test add documents
-    vector_db.add_documents(
-        documents=texts,
-        embeddings=embeddings,
-        metadatas=[doc["metadata"] for doc in sample_documents]
+    # Test upsert documents
+    ids = [f"doc_{i}" for i in range(len(texts))]
+    vector_db.upsert(
+        vectors=embeddings,
+        ids=ids,
+        metadata=[doc["metadata"] for doc in sample_documents]
     )
 
     # Test search
@@ -120,7 +123,8 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
-    vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
+    ids = [f"doc_{i}" for i in range(len(texts))]
+    vector_db.upsert(embeddings, ids, [doc["metadata"] for doc in sample_documents])
 
     # Test hybrid retrieval
     retriever = HybridRetriever(
@@ -207,7 +211,8 @@ def test_retrieval_with_filters():
         {"category": "tech"}
     ]
 
-    vector_db.add_documents(documents, embeddings, metadatas)
+    ids = [f"doc_{i}" for i in range(len(documents))]
+    vector_db.upsert(embeddings, ids, metadatas)
 
     # Search with filter
     query_embedding = embedding_model.embed_query("test")
@@ -229,12 +234,14 @@ def test_confidence_calculation():
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
+    from app.services.retrieval import HybridRetriever
+
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()
 
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
-    pipeline = RAGPipeline(retriever=retriever)
+    pipeline = RAGPipeline(retriever=retriever, llm_client=AsyncMock())
 
     # Test with high-quality results
     high_quality_results = [

@@ -266,7 +266,7 @@ class FAISSVectorDB(VectorDB):
         try:
             import faiss
             import os
-            import pickle
+            import json
             import glob
 
             if self.index_path and os.path.exists(self.index_path):
@@ -275,9 +275,19 @@ class FAISSVectorDB(VectorDB):
                 self.indices["default"] = self.index
 
                 # Try to load metadata for default collection
-                metadata_path = self.index_path + ".metadata.pkl"
-                if os.path.exists(metadata_path):
-                    with open(metadata_path, 'rb') as f:
+                # Support both new JSON format and legacy pickle format
+                metadata_json_path = self.index_path + ".metadata.json"
+                metadata_pkl_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_json_path):
+                    with open(metadata_json_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        self.metadata_store = data['metadata_store']
+                        self.id_to_idx = data['id_to_idx']
+                        self.idx_to_id = {int(k): v for k, v in data['idx_to_id'].items()}
+                elif os.path.exists(metadata_pkl_path):
+                    import pickle
+                    logger.warning(f"Loading legacy pickle metadata: {metadata_pkl_path}. Will be saved as JSON on next save.")
+                    with open(metadata_pkl_path, 'rb') as f:
                         data = pickle.load(f)
                         self.metadata_store = data['metadata_store']
                         self.id_to_idx = data['id_to_idx']
@@ -295,7 +305,7 @@ class FAISSVectorDB(VectorDB):
                 for collection_file in glob.glob(pattern):
                     # Extract collection name from filename
                     collection_name = collection_file.split('.')[-1]
-                    if collection_name == "metadata" or collection_name == "pkl":
+                    if collection_name in ("metadata", "pkl", "json"):
                         continue
 
                     # Load collection index
@@ -303,10 +313,19 @@ class FAISSVectorDB(VectorDB):
                         collection_index = faiss.read_index(collection_file)
                         self.indices[collection_name] = collection_index
 
-                        # Load metadata for this collection
-                        collection_metadata_path = collection_file + ".metadata.pkl"
-                        if os.path.exists(collection_metadata_path):
-                            with open(collection_metadata_path, 'rb') as f:
+                        # Load metadata for this collection (JSON preferred, pickle fallback)
+                        collection_meta_json = collection_file + ".metadata.json"
+                        collection_meta_pkl = collection_file + ".metadata.pkl"
+                        if os.path.exists(collection_meta_json):
+                            with open(collection_meta_json, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                                self.metadata_stores[collection_name] = data['metadata_store']
+                                self.id_to_idx_mappings[collection_name] = data['id_to_idx']
+                                self.idx_to_id_mappings[collection_name] = {int(k): v for k, v in data['idx_to_id'].items()}
+                        elif os.path.exists(collection_meta_pkl):
+                            import pickle
+                            logger.warning(f"Loading legacy pickle metadata for collection '{collection_name}'. Will be saved as JSON on next save.")
+                            with open(collection_meta_pkl, 'rb') as f:
                                 data = pickle.load(f)
                                 self.metadata_stores[collection_name] = data['metadata_store']
                                 self.id_to_idx_mappings[collection_name] = data['id_to_idx']
@@ -465,7 +484,7 @@ class FAISSVectorDB(VectorDB):
     def save(self, path: str, collection: str = None) -> None:
         """Save FAISS index to disk for a specific collection or all collections"""
         import faiss
-        import pickle
+        import json
 
         if collection is not None:
             # Save a specific collection
@@ -477,19 +496,19 @@ class FAISSVectorDB(VectorDB):
             index_path = path if collection == "default" else f"{path}.{collection}"
             faiss.write_index(index, index_path)
 
-            # Save metadata for this collection
-            metadata_path = index_path + ".metadata.pkl"
+            # Save metadata for this collection as JSON (safe format)
+            metadata_path = index_path + ".metadata.json"
             metadata_store = self.metadata_stores.get(collection, {})
             id_to_idx = self.id_to_idx_mappings.get(collection, {})
             idx_to_id = self.idx_to_id_mappings.get(collection, {})
 
-            with open(metadata_path, 'wb') as f:
-                pickle.dump({
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                json.dump({
                     'metadata_store': metadata_store,
                     'id_to_idx': id_to_idx,
-                    'idx_to_id': idx_to_id,
+                    'idx_to_id': {str(k): v for k, v in idx_to_id.items()},
                     'collection': collection
-                }, f)
+                }, f, ensure_ascii=False, indent=2)
 
             logger.info(f"Saved FAISS index for collection '{collection}' to: {index_path}")
         else:
@@ -499,19 +518,19 @@ class FAISSVectorDB(VectorDB):
                 index_path = path if collection_name == "default" else f"{path}.{collection_name}"
                 faiss.write_index(index, index_path)
 
-                # Save metadata for this collection
-                metadata_path = index_path + ".metadata.pkl"
+                # Save metadata for this collection as JSON
+                metadata_path = index_path + ".metadata.json"
                 metadata_store = self.metadata_stores.get(collection_name, {})
                 id_to_idx = self.id_to_idx_mappings.get(collection_name, {})
                 idx_to_id = self.idx_to_id_mappings.get(collection_name, {})
 
-                with open(metadata_path, 'wb') as f:
-                    pickle.dump({
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump({
                         'metadata_store': metadata_store,
                         'id_to_idx': id_to_idx,
-                        'idx_to_id': idx_to_id,
+                        'idx_to_id': {str(k): v for k, v in idx_to_id.items()},
                         'collection': collection_name
-                    }, f)
+                    }, f, ensure_ascii=False, indent=2)
 
                 logger.info(f"Saved FAISS index for collection '{collection_name}' to: {index_path}")
 

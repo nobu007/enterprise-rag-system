@@ -29,7 +29,7 @@ class Document:
     
     def _generate_id(self) -> str:
         """Generate unique document ID based on content"""
-        content_hash = hashlib.md5(self.content.encode()).hexdigest()
+        content_hash = hashlib.sha256(self.content.encode()).hexdigest()
         source = self.metadata.get('source', 'unknown')
         return f"{source}_{content_hash[:16]}"
 

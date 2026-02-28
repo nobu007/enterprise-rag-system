@@ -92,8 +92,8 @@ async def lifespan(app: FastAPI):
         logger.info("Enterprise RAG System ready!")
 
     except Exception as e:
-        logger.error(f"Initialization failed: {e}")
-        logger.warning("Some features may not work correctly")
+        logger.error(f"Initialization failed: {e}", exc_info=True)
+        raise RuntimeError(f"Enterprise RAG System initialization failed: {e}") from e
 
     yield
 
@@ -241,7 +241,7 @@ app.include_router(query.router, prefix="/api/v1", tags=["Query"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
 
 
-@app.get("/")
+@app.get("/", tags=["Health"])
 @limiter.limit("120/minute")
 async def root(request: Request):
     """Root endpoint"""
@@ -251,16 +251,6 @@ async def root(request: Request):
         "status": "running",
         "docs": "/docs",
         "redoc": "/redoc"
-    }
-
-
-@app.get("/health")
-@limiter.limit("120/minute")
-async def health_check(request: Request):
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "version": settings.app_version
     }
 
 

@@ -257,10 +257,10 @@ Answer:"""
             sources = []
 
             for idx, result in enumerate(retrieval_results):
-                context_parts.append(f"[Source {idx + 1}] {result.content}")
+                context_parts.append(f"[Source {idx + 1}] {result.document}")
                 sources.append({
                     "id": idx + 1,
-                    "content": result.content[:200] + "...",
+                    "content": result.document[:200] + "...",
                     "score": float(result.score),
                     "metadata": result.metadata
                 })

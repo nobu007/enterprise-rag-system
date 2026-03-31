@@ -402,16 +402,47 @@ async def stream_query(
         async def generate() -> AsyncGenerator[str, None]:
             """Generate SSE stream chunks"""
             try:
-                # Create retriever function
+                # Create retriever function with reranking support
                 async def retriever_func(query, top_k, use_hybrid, filter_dict, rerank, collection):
-                    """Wrapper for pipeline's retrieval logic"""
-                    return await pipeline.retriever.retrieve(
-                        query_text=query,
+                    """Wrapper for pipeline's retrieval logic with optional reranking"""
+                    # Perform initial retrieval
+                    results = await pipeline.retriever.retrieve(
+                        query=query,
                         top_k=top_k,
                         use_hybrid=use_hybrid,
                         filter_dict=filter_dict,
                         collection=collection
                     )
+
+                    # Apply reranking if requested and reranker is available
+                    if rerank and pipeline.reranker:
+                        from app.services.retrieval import RetrievalResult
+                        # Convert to format expected by reranker
+                        rerank_inputs = [
+                            {
+                                "document": r.document,
+                                "score": r.score,
+                                "metadata": r.metadata
+                            }
+                            for r in results
+                        ]
+                        reranked = pipeline.reranker.rerank(
+                            query=query,
+                            documents=rerank_inputs
+                        )
+                        # Convert back to RetrievalResult
+                        results = [
+                            RetrievalResult(
+                                document=r["document"],
+                                score=r["score"],
+                                metadata=r["metadata"],
+                                source=r["metadata"].get("source", "unknown")
+                            )
+                            for r in reranked
+                        ]
+                        logger.info(f"Applied reranking to {len(results)} results")
+
+                    return results
 
                 # Stream response with retrieval
                 chunk_generator = streaming_service.stream_query_with_retrieval(

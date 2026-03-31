@@ -15,9 +15,15 @@ Tests cover:
 import pytest
 import json
 import asyncio
+import sys
 from unittest.mock import MagicMock, AsyncMock, patch, Mock
 from datetime import datetime
 from typing import AsyncGenerator
+from dataclasses import dataclass
+from typing import Dict, Any
+
+# Mock numpy before any imports
+sys.modules['numpy'] = MagicMock()
 
 from app.services.streaming import (
     StreamingChunk,
@@ -26,6 +32,15 @@ from app.services.streaming import (
     format_sse_stream
 )
 from openai import AsyncOpenAI
+
+# Define RetrievalResult locally to avoid import issues
+@dataclass
+class RetrievalResult:
+    """Result from retrieval system"""
+    document: str
+    score: float
+    metadata: Dict[str, Any]
+    source: str
 
 
 @pytest.fixture
@@ -344,11 +359,12 @@ class TestStreamQueryWithRetrieval:
         self, streaming_service, mock_llm_client, sample_sources
     ):
         """Test complete RAG streaming with retrieval"""
-        # Mock retriever function
-        retrieval_result = Mock(
-            content="RAG is an AI framework",
+        # Mock retriever function with real RetrievalResult
+        retrieval_result = RetrievalResult(
+            document="RAG is an AI framework",
             score=0.95,
-            metadata={"source": "test.pdf"}
+            metadata={"source": "test.pdf"},
+            source="test.pdf"
         )
 
         async def mock_retriever(*args, **kwargs):
@@ -447,11 +463,12 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_end_to_end_streaming(self, streaming_service, mock_llm_client):
         """Test complete end-to-end streaming flow"""
-        # Mock retrieval
-        retrieval_result = Mock(
-            content="Test document content",
+        # Mock retrieval with real RetrievalResult
+        retrieval_result = RetrievalResult(
+            document="Test document content",
             score=0.9,
-            metadata={"source": "test.pdf"}
+            metadata={"source": "test.pdf"},
+            source="test.pdf"
         )
 
         async def mock_retriever(*args, **kwargs):
@@ -499,7 +516,14 @@ class TestIntegration:
     async def test_stream_with_parameters(self, streaming_service, mock_llm_client):
         """Test streaming with various parameter combinations"""
         async def mock_retriever(*args, **kwargs):
-            return [Mock(content="Test", score=0.9, metadata={})]
+            return [
+                RetrievalResult(
+                    document="Test document",
+                    score=0.9,
+                    metadata={},
+                    source="test"
+                )
+            ]
 
         async def mock_stream():
             yield Mock(choices=[Mock(delta=Mock(content="Response"))])

@@ -46,6 +46,7 @@ Modern enterprises face critical challenges in knowledge management:
   - Query expansion and decomposition
   - Context compression with LLMChain
   - Re-ranking with Cross-Encoder models
+  - **Learning-to-Rank** for optimized result ordering using ML-based feature scoring
   - Multi-query retrieval for comprehensive answers
 
 - **⚡ Performance Optimized**
@@ -100,6 +101,17 @@ curl -X POST http://localhost:8000/query \
     "collection": "hr-policies",
     "top_k": 5,
     "rerank": false
+  }'
+
+# Query with learning-to-rank optimization (ML-based result ordering)
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What is our company policy on remote work?",
+    "collection": "hr-policies",
+    "top_k": 5,
+    "rerank": true,
+    "rank_results": true
   }'
 ```
 

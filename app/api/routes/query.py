@@ -9,8 +9,12 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
 from app.services.rag_pipeline import RAGResponse, RAGPipeline
+from app.services.ranking import QueryResultRanker
 from app.api.dependencies import get_rag_pipeline
 from app.core.rate_limit import limiter
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -23,6 +27,7 @@ class QueryRequest(BaseModel):
     top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
+    rank_results: bool = Field(False, description="Apply learning-to-rank for optimized result ordering")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
 
 
@@ -72,6 +77,7 @@ async def query(
     - **Semantic Search**: Vector similarity search for relevant documents / セマンティック検索: 関連ドキュメントのベクトル類似度検索
     - **Hybrid Search**: Combines semantic and keyword search / ハイブリッド検索: セマンティック検索とキーワード検索の組み合わせ
     - **Re-ranking**: Cross-encoder re-ranking for better accuracy / 再ランク付け: より高い精度のためのクロスエンコーダーによる再ランク付け
+    - **Learning-to-Rank**: ML-based result optimization / ランキング: 機械学習ベースの結果最適化
     - **Multi-collection**: Search across different document collections / マルチコレクション: 異なるドキュメントコレクションの検索
 
     ## Parameters / パラメータ
@@ -81,6 +87,7 @@ async def query(
     - **top_k**: Number of results to return (1-20) / 返却する結果数 (1-20)
     - **use_hybrid**: Enable hybrid search (default: true) / ハイブリッド検索を有効化 (デフォルト: true)
     - **rerank**: Apply re-ranking (default: true) / 再ランク付けを適用 (デフォルト: true)
+    - **rank_results**: Apply learning-to-rank optimization (default: false) / ランキング最適化を適用 (デフォルト: false)
     - **filters**: Optional metadata filters / オプションのメタデータフィルター
 
     ## Example / 例
@@ -92,6 +99,7 @@ async def query(
       "top_k": 5,
       "use_hybrid": true,
       "rerank": true,
+      "rank_results": true,
       "filters": null
     }
     ```
@@ -115,9 +123,23 @@ async def query(
             collection=query_req.collection or "default"
         )
 
+        # Apply learning-to-rank if requested
+        sources = result.sources
+        if query_req.rank_results:
+            try:
+                ranker = QueryResultRanker()
+                sources = ranker.rank_results(
+                    query=query_req.query,
+                    results=sources,
+                    top_k=query_req.top_k
+                )
+                logger.info(f"Applied learning-to-rank to {len(sources)} results")
+            except Exception as e:
+                logger.error(f"Ranking failed, using original order: {e}")
+
         return QueryResponse(
             answer=result.answer,
-            sources=result.sources,
+            sources=sources,
             confidence=result.confidence,
             latency_ms=result.latency_ms,
             tokens_used=result.tokens_used

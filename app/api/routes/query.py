@@ -5,12 +5,15 @@ This module defines API endpoints for querying the RAG system.
 """
 
 from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
+import asyncio
 
 from app.services.rag_pipeline import RAGResponse, RAGPipeline
 from app.services.ranking import QueryResultRanker
-from app.api.dependencies import get_rag_pipeline
+from app.services.streaming import StreamingRAGService, format_sse_stream
+from app.api.dependencies import get_rag_pipeline, get_llm_client
 from app.core.rate_limit import limiter
 from app.core.logging_config import get_logger
 
@@ -38,6 +41,17 @@ class QueryResponse(BaseModel):
     confidence: float
     latency_ms: int
     tokens_used: int
+
+
+class StreamingQueryRequest(BaseModel):
+    """Request model for streaming query endpoint"""
+    query: str = Field(..., description="The question to ask", min_length=1, max_length=1000)
+    collection: Optional[str] = Field(None, description="Collection/namespace to search in")
+    top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
+    use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
+    rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
+    max_tokens: int = Field(2048, description="Maximum tokens to generate", ge=100, le=4096)
 
 
 class BatchQueryRequest(BaseModel):
@@ -258,6 +272,188 @@ async def batch_query(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Batch query failed: {str(e)}"
+        )
+
+
+@router.post(
+    "/stream",
+    summary="Stream RAG Query Response / RAGクエリレスポンスのストリーミング",
+    description="Stream RAG query responses in real-time using Server-Sent Events (SSE) / Server-Sent Events (SSE) を使用してRAGクエリレスポンスをリアルタイムにストリーミングします",
+    response_description="Server-Sent Events stream with incremental response chunks / 増分レスポンスチャンクを含むServer-Sent Eventsストリーム",
+    responses={
+        200: {
+            "description": "Streaming response / ストリーミングレスポンス",
+            "content": {
+                "text/event-stream": {
+                    "example": """data: {"content": "Based on", "is_done": false}
+
+data: {"content": " the provided", "is_done": false}
+
+data: {"content": " context...", "is_done": true, "sources": [...]}"""
+                }
+            }
+        },
+        400: {"description": "Invalid request parameters / 不正なリクエストパラメータ"},
+        422: {"description": "Validation error / バリデーションエラー"},
+        429: {"description": "Rate limit exceeded / レート制限超過"},
+        500: {"description": "Internal server error / サーバー内部エラー"}
+    },
+    tags=["Query"]
+)
+@limiter.limit("60/minute")
+async def stream_query(
+    request: Request,
+    stream_req: StreamingQueryRequest,
+    pipeline: RAGPipeline = Depends(get_rag_pipeline),
+    llm_client = Depends(get_llm_client)
+) -> StreamingResponse:
+    """
+    Stream RAG query response using Server-Sent Events (SSE) / Server-Sent Events (SSE) を使用してRAGクエリレスポンスをストリーミングします
+
+    ## Features / 機能
+
+    - **Real-time Streaming**: Deliver LLM responses as they're generated / リアルタイムストリーミング: 生成されるLLMレスポンスをリアルタイムに配信
+    - **Server-Sent Events**: Standard SSE protocol for easy client integration / Server-Sent Events: クライアント統合が容易な標準SSEプロトコル
+    - **RAG Pipeline**: Full retrieval-augmented generation with context / RAGパイプライン: コンテキストを含む完全な検索拡張生成
+    - **Backward Compatible**: Non-streaming endpoint remains available / 後方互換: 非ストリーミングエンドポイントも引き続き利用可能
+
+    ## Parameters / パラメータ
+
+    - **query**: Search query text (1-1000 characters) / 検索クエリテキスト (1-1000文字)
+    - **collection**: Target collection name (default: "default") / 対象コレクション名 (デフォルト: "default")
+    - **top_k**: Number of results to return (1-20) / 返却する結果数 (1-20)
+    - **use_hybrid**: Enable hybrid search (default: true) / ハイブリッド検索を有効化 (デフォルト: true)
+    - **rerank**: Apply re-ranking (default: true) / 再ランク付けを適用 (デフォルト: true)
+    - **filters**: Optional metadata filters / オプションのメタデータフィルター
+    - **max_tokens**: Maximum tokens to generate (100-4096, default: 2048) / 生成する最大トークン数 (100-4096, デフォルト: 2048)
+
+    ## Client Integration Example / クライアント統合例
+
+    ### JavaScript/TypeScript:
+    ```javascript
+    const eventSource = new EventSource('/query/stream?' + new URLSearchParams({
+        query: 'What is RAG?',
+        top_k: 5,
+        use_hybrid: true
+    }));
+
+    let fullResponse = '';
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.content) {
+            fullResponse += data.content;
+            console.log('Chunk:', data.content);
+        }
+        if (data.is_done) {
+            console.log('Complete:', fullResponse);
+            console.log('Sources:', data.sources);
+            eventSource.close();
+        }
+    };
+    ```
+
+    ### Python:
+    ```python
+    import requests
+    import json
+
+    response = requests.get(
+        'http://localhost:8000/query/stream',
+        params={'query': 'What is RAG?', 'top_k': 5},
+        stream=True
+    )
+
+    full_response = ''
+    for line in response.iter_lines():
+        if line.startswith(b'data: '):
+            data = json.loads(line[6:])
+            if data.get('content'):
+                full_response += data['content']
+            if data.get('is_done'):
+                print('Complete:', full_response)
+                print('Sources:', data.get('sources'))
+                break
+    ```
+
+    Args:
+        request: FastAPI Request object
+        stream_req: Streaming query request with parameters
+        pipeline: RAG pipeline injected via dependency injection
+        llm_client: Async OpenAI client for streaming
+
+    Returns:
+        StreamingResponse with SSE formatted chunks
+    """
+    try:
+        # Initialize streaming service
+        streaming_service = StreamingRAGService(
+            llm_client=llm_client,
+            max_tokens=stream_req.max_tokens
+        )
+
+        # Validate request parameters
+        streaming_service.validate_stream_request(
+            query=stream_req.query,
+            top_k=stream_req.top_k,
+            max_tokens=stream_req.max_tokens
+        )
+
+        # Create async generator for streaming
+        async def generate() -> AsyncGenerator[str, None]:
+            """Generate SSE stream chunks"""
+            try:
+                # Create retriever function
+                async def retriever_func(query, top_k, use_hybrid, filter_dict, rerank, collection):
+                    """Wrapper for pipeline's retrieval logic"""
+                    return await pipeline.retriever.retrieve(
+                        query_text=query,
+                        top_k=top_k,
+                        use_hybrid=use_hybrid,
+                        filter_dict=filter_dict,
+                        collection=collection
+                    )
+
+                # Stream response with retrieval
+                chunk_generator = streaming_service.stream_query_with_retrieval(
+                    query=stream_req.query,
+                    retriever_func=retriever_func,
+                    top_k=stream_req.top_k,
+                    use_hybrid=stream_req.use_hybrid,
+                    rerank=stream_req.rerank,
+                    filter_dict=stream_req.filters,
+                    collection=stream_req.collection or "default"
+                )
+
+                # Format as SSE
+                async for sse_chunk in format_sse_stream(chunk_generator):
+                    yield sse_chunk
+
+            except Exception as e:
+                logger.error(f"Streaming error: {e}", exc_info=True)
+                # Send error as SSE
+                error_sse = f'data: {{"error": "{str(e)}", "is_done": true}}\n\n'
+                yield error_sse
+
+        # Return SSE streaming response
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Streaming failed: {str(e)}"
         )
 
 

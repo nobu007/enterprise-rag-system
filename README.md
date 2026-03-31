@@ -73,6 +73,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **IP-based rate limiting** with proxy header support
   - **PostgreSQL connection pooling** with asyncpg for production workloads
   - **Request ID tracking** for distributed tracing and debugging
+  - **Document Relationship Graph** for building and querying document relationships
 
 ---
 
@@ -131,6 +132,131 @@ curl -X POST http://localhost:8000/query \
   "latency_ms": 2341,
   "tokens_used": 1245
 }
+```
+
+### 🌊 Streaming Responses (New!)
+**Real-time streaming for large query results using Server-Sent Events (SSE)**
+
+#### Benefits
+- **Reduced perceived latency**: Users see responses as they're generated
+- **Better UX for long answers**: No waiting for complete responses
+- **Backward compatible**: Non-streaming endpoint remains available
+- **Production-ready**: Built-in error handling and timeout management
+
+#### JavaScript/TypeScript Example
+```javascript
+// Connect to streaming endpoint
+const eventSource = new EventSource(
+  '/query/stream?' + new URLSearchParams({
+    query: 'Explain our company remote work policy in detail',
+    top_k: 5,
+    use_hybrid: true,
+    rerank: true
+  })
+);
+
+let fullResponse = '';
+
+// Handle incoming chunks
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.content) {
+    // Append each chunk to the response
+    fullResponse += data.content;
+    console.log('Chunk:', data.content);
+
+    // Update UI in real-time
+    document.getElementById('answer').textContent = fullResponse;
+  }
+
+  if (data.is_done) {
+    // Stream completed
+    console.log('Complete response:', fullResponse);
+    console.log('Sources:', data.sources);
+    console.log('Metadata:', data.metadata);
+
+    eventSource.close();
+  }
+};
+
+// Handle errors
+eventSource.onerror = (error) => {
+  console.error('Stream error:', error);
+  eventSource.close();
+};
+```
+
+#### Python Example
+```python
+import requests
+import json
+
+# Stream query response
+response = requests.get(
+    'http://localhost:8000/query/stream',
+    params={
+        'query': 'Explain our company remote work policy',
+        'top_k': 5,
+        'use_hybrid': True
+    },
+    stream=True
+)
+
+full_response = ''
+
+# Process SSE stream
+for line in response.iter_lines():
+    if line.startswith(b'data: '):
+        data = json.loads(line[6:])
+
+        if data.get('content'):
+            # Append chunk
+            full_response += data['content']
+            print(data['content'], end='', flush=True)
+
+        if data.get('is_done'):
+            # Stream completed
+            print('\n\nSources:', data.get('sources'))
+            print('Metadata:', data.get('metadata'))
+            break
+```
+
+#### cURL Example
+```bash
+# Stream query with cURL
+curl -N "http://localhost:8000/query/stream?query=What%20is%20RAG%3F&top_k=5"
+
+# Output:
+# data: {"content": "Retrieval-", "is_done": false}
+#
+# data: {"content": "Augmented ", "is_done": false}
+#
+# data: {"content": "Generation ", "is_done": false}
+#
+# data: {"content": "is ", "is_done": false}
+#
+# data: {"content": "an AI framework...", "is_done": true, "sources": [...]}
+#
+```
+
+#### API Parameters
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | (required) | User's question (1-1000 characters) |
+| `collection` | string | "default" | Collection/namespace to search |
+| `top_k` | int | 5 | Number of documents to retrieve (1-20) |
+| `use_hybrid` | bool | true | Enable hybrid search (semantic + keyword) |
+| `rerank` | bool | true | Apply cross-encoder re-ranking |
+| `filters` | dict | null | Optional metadata filters |
+| `max_tokens` | int | 2048 | Maximum tokens to generate (100-4096) |
+
+#### Response Format
+Each SSE event contains a JSON object with:
+- `content`: Text chunk (empty in final message)
+- `is_done`: Boolean indicating stream completion
+- `sources`: Array of source documents (only in final message)
+- `metadata`: Additional information (tokens, latency, etc.)
 ```
 
 ### Request Tracking
@@ -663,6 +789,118 @@ groups:
         annotations:
           summary: "LLM token usage exceeds 10K tokens/5m"
 ```
+
+### Document Relationship Graph
+
+The system includes a powerful document relationship graph feature for building and querying relationships between documents using NetworkX.
+
+#### Features
+
+- **🔗 Relationship Types**: Citation, reference, similarity, hierarchy, and generic relationships
+- **🔍 Path Finding**: Discover connections between documents through shortest path algorithms
+- **📊 Centrality Metrics**: Calculate document importance using degree, betweenness, and PageRank centrality
+- **🎯 Clustering**: Automatically find document clusters using community detection
+- **💾 Export**: Export graphs in GEXF, GraphML, or JSON formats for visualization
+
+#### API Usage
+
+**Add Documents to Graph:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/relationships/documents" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "doc_id": "doc-001",
+    "metadata": {"title": "Introduction to RAG", "collection": "tech-docs"}
+  }'
+```
+
+**Add Relationships:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/relationships/relationships" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_doc": "doc-001",
+    "target_doc": "doc-002",
+    "relationship_type": "citation",
+    "weight": 0.9
+  }'
+```
+
+**Relationship Types:**
+- `citation`: Document A cites Document B
+- `reference`: Document A references Document B
+- `similarity`: Documents are semantically similar
+- `hierarchy`: Parent-child relationship (e.g., chapter-section)
+- `related`: Generic related documents
+
+**Get Related Documents:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/relationships/related" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "doc_id": "doc-001",
+    "direction": "outgoing",
+    "relationship_type": "citation",
+    "max_results": 10,
+    "min_weight": 0.5
+  }'
+```
+
+**Find Shortest Path:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/relationships/path" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_doc": "doc-001",
+    "target_doc": "doc-005"
+  }'
+```
+
+**Find Document Clusters:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/relationships/clusters" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "min_cluster_size": 3
+  }'
+```
+
+**Calculate Centrality:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/relationships/centrality" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metric": "pagerank"
+  }'
+```
+
+**Get Graph Statistics:**
+```bash
+curl -X GET "http://localhost:8000/api/v1/relationships/stats"
+```
+
+**Export Graph:**
+```bash
+# Export as JSON
+curl -X POST "http://localhost:8000/api/v1/relationships/export" \
+  -H "Content-Type: application/json" \
+  -d '{"format": "json"}' \
+  -o graph.json
+
+# Export as GEXF (for Gephi)
+curl -X POST "http://localhost:8000/api/v1/relationships/export" \
+  -H "Content-Type: application/json" \
+  -d '{"format": "gexf"}' \
+  -o graph.gexf
+```
+
+#### Use Cases
+
+1. **Citation Analysis**: Track how documents cite each other
+2. **Knowledge Graphs**: Build hierarchical knowledge structures
+3. **Recommendation Engines**: Suggest related documents based on graph connections
+4. **Impact Analysis**: Find influential documents using centrality metrics
+5. **Community Detection**: Discover thematic document clusters
 
 ---
 

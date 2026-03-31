@@ -45,6 +45,9 @@ class BatchQueryRequest(BaseModel):
     queries: List[str] = Field(..., description="List of questions to ask")
     collection: Optional[str] = None
     top_k: int = Field(5, ge=1, le=20)
+    use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
+    rerank: bool = Field(True, description="Apply cross-encoder re-ranking")
+    rank_results: bool = Field(False, description="Apply feature-based ranking for result optimization")
 
 
 @router.post(
@@ -187,6 +190,9 @@ async def batch_query(
     - **queries**: List of search query texts / 検索クエリテキストのリスト
     - **collection**: Target collection name / 対象コレクション名
     - **top_k**: Number of results per query / クエリごとの結果数
+    - **use_hybrid**: Enable hybrid search (default: true) / ハイブリッド検索を有効化
+    - **rerank**: Apply cross-encoder re-ranking (default: true) / 再ランク付けを適用
+    - **rank_results**: Apply feature-based ranking (default: false) / 特徴量ランク付けを適用
 
     ## Example / 例
 
@@ -198,7 +204,10 @@ async def batch_query(
         "Explain cross-encoder re-ranking"
       ],
       "collection": "default",
-      "top_k": 5
+      "top_k": 5,
+      "use_hybrid": true,
+      "rerank": true,
+      "rank_results": true
     }
     ```
 
@@ -219,10 +228,25 @@ async def batch_query(
         )
 
         responses = []
-        for result in results:
+        for idx, result in enumerate(results):
+            sources = result.sources
+
+            # Apply feature-based ranking if requested
+            if batch_req.rank_results:
+                try:
+                    ranker = QueryResultRanker()
+                    sources = ranker.rank_results(
+                        query=batch_req.queries[idx],
+                        results=sources,
+                        top_k=batch_req.top_k
+                    )
+                    logger.info(f"Applied feature-based ranking to query {idx}")
+                except Exception as e:
+                    logger.error(f"Ranking failed for query {idx}: {e}")
+
             responses.append(QueryResponse(
                 answer=result.answer,
-                sources=result.sources,
+                sources=sources,
                 confidence=result.confidence,
                 latency_ms=result.latency_ms,
                 tokens_used=result.tokens_used

@@ -1,23 +1,30 @@
 """
-Learning-to-Rank Service for Query Result Optimization
+Feature-Based Ranking Service for Query Result Optimization
 
-This module implements machine learning-based ranking for optimizing
-the order of query results in RAG systems.
+This module implements multi-feature scoring for optimizing the order of
+query results using weighted combination of semantic, keyword, freshness,
+and popularity features.
+
+Note: This is a rule-based scoring system using configurable weights,
+not a trained ML model. For true learning-to-rank with trained models,
+consider implementing Gradient Boosting or neural ranking models.
 """
 
 from typing import List, Dict, Any, Optional, Tuple
-import numpy as np
+from math import exp
 from app.core.logging_config import get_logger
+from app.core.config import get_settings
 
 logger = get_logger(__name__)
 
 
 class QueryResultRanker:
     """
-    Learning-to-rank service for optimizing query result ordering.
+    Feature-based ranking service for optimizing query result ordering.
 
-    Uses multiple features to score and reorder retrieved documents
-    for improved relevance and user satisfaction.
+    Uses multiple weighted features to score and reorder retrieved documents
+    for improved relevance. Weights are configurable and can be tuned for
+    specific use cases.
     """
 
     def __init__(
@@ -105,12 +112,56 @@ class QueryResultRanker:
 
         # Freshness score (if metadata available)
         metadata = result.get('metadata', {})
-        if 'created_at' in metadata or 'last_updated' in metadata:
-            # Normalize to 0-1 range (recent = higher score)
-            # This is a simplified version - in production use actual dates
-            features['freshness'] = metadata.get('freshness', 0.5)
-        else:
-            features['freshness'] = 0.5
+
+        # Calculate actual freshness from dates with exponential decay
+        freshness = 0.5  # Default for documents without date info
+        if 'last_updated' in metadata:
+            try:
+                from datetime import datetime
+                last_updated_str = metadata['last_updated']
+
+                # Handle ISO format dates
+                if isinstance(last_updated_str, str):
+                    try:
+                        last_updated = datetime.fromisoformat(last_updated_str.replace('Z', '+00:00'))
+                    except ValueError:
+                        # Try parsing with timezone
+                        from dateutil import parser as date_parser
+                        last_updated = date_parser.parse(last_updated_str)
+
+                    days_old = (datetime.now() - last_updated).days
+                    # Exponential decay with 90-day half-life
+                    # Fresh documents (0 days) = 1.0, 90 days old = 0.5, 180 days = 0.25
+                    freshness = exp(-days_old / 90.0) if days_old >= 0 else 1.0
+            except (ImportError, AttributeError):
+                # dateutil not available, use simplified version
+                freshness = metadata.get('freshness', 0.5)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse date for freshness: {e}")
+                freshness = metadata.get('freshness', 0.5)
+        elif 'created_at' in metadata:
+            # Same logic for created_at
+            try:
+                from datetime import datetime
+                created_at_str = metadata['created_at']
+                if isinstance(created_at_str, str):
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                    except ValueError:
+                        try:
+                            from dateutil import parser as date_parser
+                            created_at = date_parser.parse(created_at_str)
+                        except ImportError:
+                            created_at = None
+
+                    if created_at:
+                        days_old = (datetime.now() - created_at).days
+                        freshness = exp(-days_old / 90.0) if days_old >= 0 else 1.0
+            except Exception as e:
+                logger.warning(f"Failed to parse created_at for freshness: {e}")
+                freshness = metadata.get('freshness', 0.5)
+
+        features['freshness'] = max(0.0, min(1.0, freshness))
 
         # Popularity score (if metadata available)
         features['popularity'] = (
@@ -325,7 +376,7 @@ class QueryResultRanker:
         }
 
 
-# Global ranker instance (can be configured via environment)
+# Global ranker instance (configured via environment variables)
 _ranker: Optional[QueryResultRanker] = None
 
 
@@ -333,12 +384,27 @@ def get_ranker() -> QueryResultRanker:
     """
     Get or create the global ranker instance.
 
+    Uses weights from configuration if available.
+
     Returns:
         QueryResultRanker instance
     """
     global _ranker
     if _ranker is None:
-        _ranker = QueryResultRanker()
+        settings = get_settings()
+        _ranker = QueryResultRanker(
+            semantic_weight=settings.ranking_semantic_weight,
+            keyword_weight=settings.ranking_keyword_weight,
+            freshness_weight=settings.ranking_freshness_weight,
+            popularity_weight=settings.ranking_popularity_weight
+        )
+        logger.info(
+            f"Initialized ranker with weights from config: "
+            f"semantic={settings.ranking_semantic_weight}, "
+            f"keyword={settings.ranking_keyword_weight}, "
+            f"freshness={settings.ranking_freshness_weight}, "
+            f"popularity={settings.ranking_popularity_weight}"
+        )
     return _ranker
 
 

@@ -45,6 +45,13 @@ class Settings(BaseSettings):
         env="RERANKER_MODEL"
     )
 
+    # Feature-Based Ranking Configuration
+    ranking_semantic_weight: float = Field(0.4, env="RANKING_SEMANTIC_WEIGHT")
+    ranking_keyword_weight: float = Field(0.3, env="RANKING_KEYWORD_WEIGHT")
+    ranking_freshness_weight: float = Field(0.1, env="RANKING_FRESHNESS_WEIGHT")
+    ranking_popularity_weight: float = Field(0.2, env="RANKING_POPULARITY_WEIGHT")
+    ranking_enabled: bool = Field(False, env="RANKING_ENABLED")
+
     # LLM Configuration
     llm_model: str = Field("gpt-4-turbo-preview", env="LLM_MODEL")
     llm_temperature: float = Field(0.7, env="LLM_TEMPERATURE")

@@ -904,6 +904,272 @@ curl -X POST "http://localhost:8000/api/v1/relationships/export" \
 
 ---
 
+## 👥 Multi-Tenant Support
+
+**Enterprise-grade multi-tenancy with complete data isolation between organizations**
+
+### Features
+
+- **Tenant Identification**: Automatic tenant detection via API key or tenant ID header
+- **Data Isolation**: Complete segregation of data between tenants
+- **Tenant Status Management**: Active, Suspended, Pending, and Archived states
+- **API Key Authentication**: Secure per-tenant API key generation
+- **Tenant Context**: Request-scoped tenant information injection
+- **Flexible Configuration**: Tenant-specific settings and metadata
+
+### Architecture
+
+The multi-tenant system consists of three main components:
+
+1. **Tenant Model** (`app/core/tenant.py`):
+   - Tenant entity with status, configuration, and metadata
+   - Tenant context for request-scoped information
+   - Tenant manager for CRUD operations
+   - API key generation and validation
+
+2. **Tenant Middleware** (`app/middleware/tenant.py`):
+   - Automatic tenant identification from headers
+   - Request context injection
+   - Tenant validation and status checking
+   - Isolation enforcement
+
+3. **Isolation Layer**:
+   - Cross-tenant access prevention
+   - Tenant-scoped data queries
+   - Audit logging per tenant
+
+### API Usage
+
+#### Using Tenant ID Header
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: acme-corp" \
+  -d '{
+    "query": "What is our vacation policy?",
+    "collection": "hr-docs",
+    "top_k": 5
+  }'
+```
+
+#### Using API Key (Recommended)
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: rag_abcd1234..." \
+  -d '{
+    "query": "What is our vacation policy?",
+    "collection": "hr-docs",
+    "top_k": 5
+  }'
+```
+
+### Tenant Management
+
+#### Create a Tenant
+
+```python
+from app.core.tenant import get_tenant_manager, TenantStatus
+
+manager = get_tenant_manager()
+
+tenant = manager.create_tenant(
+    tenant_id="acme-corp",
+    name="Acme Corporation",
+    status=TenantStatus.ACTIVE,
+    config={
+        "max_documents": 10000,
+        "enable_cache": True,
+        "rate_limit": 1000
+    },
+    metadata={
+        "industry": "Technology",
+        "plan": "enterprise",
+        "created_by": "admin"
+    }
+)
+```
+
+#### Generate API Key
+
+```python
+# Generate secure API key for tenant
+api_key = manager.generate_api_key("acme-corp")
+# Returns: rag_abc123xyz789...
+
+# Store securely and share with tenant
+```
+
+#### Get Tenant Information
+
+```python
+# Get tenant by ID
+tenant = manager.get_tenant("acme-corp")
+
+if tenant and tenant.is_active():
+    print(f"Tenant: {tenant.name}")
+    print(f"Status: {tenant.status}")
+    print(f"Config: {tenant.config}")
+```
+
+#### Update Tenant
+
+```python
+# Update tenant configuration
+tenant = manager.update_tenant(
+    tenant_id="acme-corp",
+    status=TenantStatus.SUSPENDED,  # Suspend tenant
+    config={"rate_limit": 100}  # Update rate limit
+)
+```
+
+#### List Tenants
+
+```python
+# List all tenants
+all_tenants = manager.list_tenants()
+
+# List only active tenants
+active_tenants = manager.list_tenants(status=TenantStatus.ACTIVE)
+
+# List with limit
+recent_tenants = manager.list_tenants(limit=10)
+```
+
+#### Delete Tenant
+
+```python
+# Delete tenant and all associated data
+deleted = manager.delete_tenant("acme-corp")
+```
+
+### FastAPI Integration
+
+#### Adding Tenant Middleware
+
+```python
+from app.middleware.tenant import TenantMiddleware
+from app.core.tenant import get_tenant_manager
+
+# Add to FastAPI app
+app.add_middleware(
+    TenantMiddleware,
+    tenant_manager=get_tenant_manager(),
+    require_tenant=False,  # Allow default tenant
+    enable_isolation=True  # Enforce isolation
+)
+```
+
+#### Using Tenant Dependencies
+
+```python
+from fastapi import Depends
+from app.middleware.tenant import get_current_tenant, get_active_tenant
+from app.core.tenant import Tenant
+
+@app.get("/api/v1/tenant/info")
+async def get_tenant_info(
+    tenant: Optional[Tenant] = Depends(get_current_tenant)
+):
+    """Get current tenant information"""
+    if not tenant:
+        return {"message": "No tenant authenticated"}
+    return {
+        "tenant_id": tenant.tenant_id,
+        "name": tenant.name,
+        "status": tenant.status.value,
+        "config": tenant.config
+    }
+
+@app.post("/api/v1/documents")
+async def create_document(
+    doc_data: DocumentCreate,
+    tenant: Tenant = Depends(get_active_tenant)  # Requires active tenant
+):
+    """Create document for authenticated tenant"""
+    # Document automatically scoped to tenant
+    doc_id = await create_document_for_tenant(
+        tenant_id=tenant.tenant_id,
+        data=doc_data
+    )
+    return {"document_id": doc_id, "tenant_id": tenant.tenant_id}
+```
+
+### Tenant Isolation
+
+The system enforces strict tenant isolation:
+
+```python
+from app.core.tenant import validate_tenant_isolation, TenantContext
+
+# Create tenant context
+context = TenantContext(
+    tenant_id="acme-corp",
+    is_isolated=True
+)
+
+# Validate before accessing data
+try:
+    validate_tenant_isolation(context, "acme-corp")
+    # Access allowed - same tenant
+except TenantIsolationError:
+    # Cross-tenant access blocked
+    raise HTTPException(status_code=403, detail="Access denied")
+```
+
+### Tenant Status Lifecycle
+
+```
+PENDING → ACTIVE → SUSPENDED → ARCHIVED
+           ↓         ↓
+         (active)  (blocked)
+```
+
+- **PENDING**: Tenant created but not yet activated
+- **ACTIVE**: Tenant can access the system (normal state)
+- **SUSPENDED**: Tenant temporarily blocked (payment issues, violations)
+- **ARCHIVED**: Tenant deactivated and data archived
+
+### Configuration
+
+Environment variables for multi-tenancy:
+
+```bash
+# Enable/disable multi-tenant mode
+MULTI_TENANT_ENABLED=true
+
+# Require tenant for all requests
+REQUIRE_TENANT=false
+
+# Default tenant ID (when require_tenant=false)
+DEFAULT_TENANT_ID=default
+
+# Enable tenant isolation enforcement
+ENABLE_TENANT_ISOLATION=true
+```
+
+### Best Practices
+
+1. **Always use API keys** instead of tenant IDs in production
+2. **Enable isolation** to prevent cross-tenant data access
+3. **Validate tenant status** before processing requests
+4. **Use tenant-scoped collections** for data segregation
+5. **Monitor tenant activity** through audit logs
+6. **Implement tenant-specific rate limits**
+7. **Regularly archive inactive tenants**
+
+### Security Considerations
+
+- API keys are securely generated using `secrets.token_urlsafe()`
+- Tenant IDs are validated to prevent injection attacks
+- Cross-tenant access is blocked at middleware level
+- All tenant operations are logged for audit purposes
+- Tenant status is validated on every request
+
+---
+
 ## 🏗️ Architecture
 
 ### System Overview

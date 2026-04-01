@@ -36,6 +36,9 @@ Modern enterprises face critical challenges in knowledge management:
   - PDF, Markdown, Docx, HTML, Confluence, Notion
   - Intelligent chunking with semantic awareness
   - Metadata extraction and preservation
+  - **Enhanced document parsing** with table extraction (supports Markdown, CSV, JSON formats)
+  - **Chart and figure detection** from document content
+  - **Formatting preservation** for headers, lists, code blocks, and links
 
 - **🔍 Hybrid Search Engine**
   - Semantic search using state-of-the-art embeddings

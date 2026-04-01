@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     rate_limit_per_hour: int = Field(1000, env="RATE_LIMIT_PER_HOUR")
     rate_limit_burst: int = Field(10, env="RATE_LIMIT_BURST")
 
+    # Concurrency Control
+    max_concurrent_requests: int = Field(10, env="MAX_CONCURRENT_REQUESTS")
+
     # Redis Cache Configuration
     redis_host: str = Field("localhost", env="REDIS_HOST")
     redis_port: int = Field(6379, env="REDIS_PORT")

@@ -54,6 +54,7 @@ Modern enterprises face critical challenges in knowledge management:
   - Async processing for high throughput
   - Query result caching with Redis
   - <3s response time for 95th percentile queries
+  - **Concurrent request handling** with semaphore-based connection limits
 
 - **📊 Observability & Monitoring**
   - LangSmith integration for debugging
@@ -422,6 +423,58 @@ RATE_LIMIT_ENABLED=false
 RATE_LIMIT_PER_MINUTE=100
 RATE_LIMIT_PER_HOUR=2000
 ```
+
+### Concurrency Control
+
+The system implements semaphore-based concurrency control to limit simultaneous requests and prevent resource exhaustion:
+
+#### Features
+
+- **🎯 Configurable Limits**: Set maximum concurrent requests via `MAX_CONCURRENT_REQUESTS` environment variable
+- **📊 Statistics Tracking**: Monitor active, completed, rejected, and peak concurrent requests
+- **⏱️ Timeout Support**: Optional timeout for acquiring slots
+- **🔄 Automatic Release**: Context manager ensures proper resource cleanup
+
+#### Usage Example
+
+```python
+from app.core.concurrency import get_concurrency_limiter
+
+# Get the global limiter (configured at startup)
+limiter = get_concurrency_limiter()
+
+# Use as context manager
+async with limiter:
+    # Your request processing logic here
+    await process_request()
+```
+
+#### Configuration
+
+```bash
+# Set maximum concurrent requests (default: 10)
+MAX_CONCURRENT_REQUESTS=20
+```
+
+#### Monitoring
+
+Access concurrency statistics:
+
+```python
+stats = limiter.get_stats()
+# Returns: {
+#   "total_requests": 150,
+#   "active_requests": 5,
+#   "completed_requests": 145,
+#   "rejected_requests": 0,
+#   "peak_concurrent": 12
+# }
+```
+
+#### Properties
+
+- **available_slots**: Number of available slots for concurrent processing
+- **utilization**: Current utilization ratio (0.0 to 1.0)
 
 ### Redis Caching
 
@@ -1414,6 +1467,9 @@ CACHE_TTL_SECONDS=3600  # 1 hour
 
 # Performance
 MAX_WORKERS=4
+
+# Concurrency Control
+MAX_CONCURRENT_REQUESTS=10  # Maximum concurrent requests to process
 
 # Monitoring
 LANGSMITH_API_KEY=...

@@ -18,6 +18,7 @@ from app.core.logging_config import setup_logging, get_logger
 from app.core.rate_limit import limiter
 from app.core.cache import CacheManager
 from app.core import metrics
+from app.core.concurrency import get_concurrency_limiter
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
 from app.api.routes import query, health, ingest
@@ -88,6 +89,12 @@ async def lifespan(app: FastAPI):
             cache_manager=cache_manager
         )
         app.state.rag_pipeline = rag_pipeline
+
+        # Initialize concurrency limiter
+        max_concurrent = getattr(settings, 'max_concurrent_requests', 10)
+        logger.info(f"Initializing concurrency limiter (max_concurrent={max_concurrent})...")
+        concurrency_limiter = get_concurrency_limiter(max_concurrent=max_concurrent)
+        app.state.concurrency_limiter = concurrency_limiter
 
         logger.info("Enterprise RAG System ready!")
 

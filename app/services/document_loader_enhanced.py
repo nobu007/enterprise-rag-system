@@ -167,23 +167,3 @@ class EnhancedDocumentLoader:
         logger.info(f"Successfully loaded {len(documents)} documents")
         return documents
 
-
-# For backward compatibility, provide the same API as the original
-class DocumentLoader(EnhancedDocumentLoader):
-    """Enhanced DocumentLoader with backward compatibility"""
-
-    @staticmethod
-    def load_pdf(file_path: str) -> List[Document]:
-        """Load a PDF file (backward compatible - no table extraction)"""
-        from app.services.document_loader import DocumentLoader as BaseLoader
-        return BaseLoader.load_pdf(file_path)
-
-    @staticmethod
-    def load_directory(
-        directory_path: str,
-        file_extensions: Optional[List[str]] = None,
-        recursive: bool = True
-    ) -> List[Document]:
-        """Load directory (backward compatible - no table extraction)"""
-        from app.services.document_loader import DocumentLoader as BaseLoader
-        return BaseLoader.load_directory(directory_path, file_extensions, recursive)

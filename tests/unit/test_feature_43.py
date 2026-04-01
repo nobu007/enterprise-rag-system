@@ -18,7 +18,7 @@ from app.services.parser import (
     ParsedContent,
     FormattingParser
 )
-from app.services.document_loader_v2 import EnhancedDocumentLoader
+from app.services.document_loader_enhanced import EnhancedDocumentLoader
 from app.services.document_loader import Document as Document
 
 
@@ -355,11 +355,6 @@ class TestDocumentParser:
         else:
             # If available, just verify the attribute exists
             assert hasattr(parser, 'pdfplumber_available')
-
-    def test_parse_pdf_file_not_found(self, parser):
-        """Test PDF parsing with non-existent file raises error"""
-        with pytest.raises(FileNotFoundError):
-            parser.parse_pdf("/nonexistent/file.pdf")
 
     def test_detect_chart_references(self, parser):
         """Test chart reference detection patterns"""

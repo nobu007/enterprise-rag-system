@@ -79,6 +79,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **PostgreSQL connection pooling** with asyncpg for production workloads
   - **Request ID tracking** for distributed tracing and debugging
   - **Document Relationship Graph** for building and querying document relationships
+  - **Document Encryption** - AES-256-GCM encryption for sensitive document content at rest
 
 ---
 

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import hashlib
 
 from app.core.logging_config import get_logger
+from app.core.encryption import DocumentEncryption, EncryptionError
 
 
 logger = get_logger(__name__)
@@ -21,6 +22,7 @@ class Document:
     content: str
     metadata: Dict[str, Any]
     doc_id: Optional[str] = None
+    encrypted_content: Optional[str] = None
     
     def __post_init__(self):
         """Generate document ID if not provided"""
@@ -32,13 +34,66 @@ class Document:
         content_hash = hashlib.sha256(self.content.encode()).hexdigest()
         source = self.metadata.get('source', 'unknown')
         return f"{source}_{content_hash[:16]}"
+    
+    def encrypt_content(self, encryptor: DocumentEncryption) -> None:
+        """
+        Encrypt document content using provided encryptor.
+        
+        Args:
+            encryptor: DocumentEncryption instance
+        """
+        try:
+            result = encryptor.encrypt(self.content)
+            self.encrypted_content = result.encrypted_data
+            self.metadata['encrypted'] = True
+            self.metadata['encryption_nonce'] = result.nonce
+            self.metadata['encryption_salt'] = result.salt
+            self.metadata['encryption_tag'] = result.tag
+            logger.debug(f"Encrypted document {self.doc_id}")
+        except EncryptionError as e:
+            logger.error(f"Failed to encrypt document {self.doc_id}: {e}")
+            raise
+    
+    def decrypt_content(self, encryptor: DocumentEncryption) -> str:
+        """
+        Decrypt document content using provided encryptor.
+        
+        Args:
+            encryptor: DocumentEncryption instance
+        
+        Returns:
+            Decrypted content string
+        """
+        if not self.encrypted_content:
+            raise ValueError("Document has no encrypted content")
+        
+        try:
+            nonce = self.metadata.get('encryption_nonce', '')
+            salt = self.metadata.get('encryption_salt', '')
+            tag = self.metadata.get('encryption_tag', '')
+            
+            decrypted = encryptor.decrypt(
+                self.encrypted_content,
+                nonce,
+                salt,
+                tag
+            )
+            logger.debug(f"Decrypted document {self.doc_id}")
+            return decrypted
+        except Exception as e:
+            logger.error(f"Failed to decrypt document {self.doc_id}: {e}")
+            raise
+    
+    def is_encrypted(self) -> bool:
+        """Check if document content is encrypted."""
+        return self.encrypted_content is not None
 
 
 class DocumentLoader:
     """Base class for document loaders"""
     
     @staticmethod
-    def load_text_file(file_path: str) -> Document:
+    def load_text_file(file_path: str, encryptor: Optional[DocumentEncryption] = None) -> Document:
         """Load a plain text file"""
         path = Path(file_path)
         
@@ -55,10 +110,16 @@ class DocumentLoader:
             'size_bytes': path.stat().st_size
         }
         
-        return Document(content=content, metadata=metadata)
+        doc = Document(content=content, metadata=metadata)
+        
+        # Encrypt if encryptor is provided
+        if encryptor:
+            doc.encrypt_content(encryptor)
+        
+        return doc
     
     @staticmethod
-    def load_pdf(file_path: str) -> List[Document]:
+    def load_pdf(file_path: str, encryptor: Optional[DocumentEncryption] = None) -> List[Document]:
         """Load a PDF file"""
         try:
             from pypdf import PdfReader
@@ -84,12 +145,18 @@ class DocumentLoader:
                     'total_pages': len(reader.pages)
                 }
                 
-                documents.append(Document(content=text, metadata=metadata))
+                doc = Document(content=text, metadata=metadata)
+                
+                # Encrypt if encryptor is provided
+                if encryptor:
+                    doc.encrypt_content(encryptor)
+                
+                documents.append(doc)
         
         return documents
     
     @staticmethod
-    def load_markdown(file_path: str) -> Document:
+    def load_markdown(file_path: str, encryptor: Optional[DocumentEncryption] = None) -> Document:
         """Load a Markdown file"""
         path = Path(file_path)
         
@@ -106,13 +173,20 @@ class DocumentLoader:
             'size_bytes': path.stat().st_size
         }
         
-        return Document(content=content, metadata=metadata)
+        doc = Document(content=content, metadata=metadata)
+        
+        # Encrypt if encryptor is provided
+        if encryptor:
+            doc.encrypt_content(encryptor)
+        
+        return doc
     
     @staticmethod
     def load_directory(
         directory_path: str,
         file_extensions: Optional[List[str]] = None,
-        recursive: bool = True
+        recursive: bool = True,
+        encryptor: Optional[DocumentEncryption] = None
     ) -> List[Document]:
         """Load all documents from a directory"""
         if file_extensions is None:
@@ -141,13 +215,13 @@ class DocumentLoader:
                 ext = file_path.suffix.lower()
 
                 if ext == '.pdf':
-                    docs = DocumentLoader.load_pdf(str(file_path))
+                    docs = DocumentLoader.load_pdf(str(file_path), encryptor=encryptor)
                     documents.extend(docs)
                 elif ext == '.md':
-                    doc = DocumentLoader.load_markdown(str(file_path))
+                    doc = DocumentLoader.load_markdown(str(file_path), encryptor=encryptor)
                     documents.append(doc)
                 elif ext == '.txt':
-                    doc = DocumentLoader.load_text_file(str(file_path))
+                    doc = DocumentLoader.load_text_file(str(file_path), encryptor=encryptor)
                     documents.append(doc)
 
                 logger.debug(f"Loaded: {file_path.name}")

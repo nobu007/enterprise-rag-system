@@ -68,6 +68,7 @@ Modern enterprises face critical challenges in knowledge management:
   - Multi-tenancy support
   - Audit logging
   - PII detection and redaction
+  - **Document validation before ingestion** (content quality, security, PII detection)
   - **Security validation middleware** (XSS, SQL injection, path traversal detection)
   - **Request size limits** (DoS protection)
   - **Security headers** (CSP, HSTS, X-Frame-Options, etc.)
@@ -382,6 +383,75 @@ celery -A app.tasks.batch_tasks worker --loglevel=info --queues=batch_processing
 
 # Start Flower monitoring
 celery -A app.tasks.batch_tasks flower --port=5555
+```
+
+### Document Validation
+
+All documents are automatically validated before ingestion to ensure quality and security:
+
+#### Validation Checks
+
+| Check Type | Description | Action |
+|-----------|-------------|--------|
+| **Content Quality** | Empty content, minimum length (50 chars), maximum length (10MB) | Reject invalid documents |
+| **Security** | XSS, SQL injection, path traversal, command injection patterns | Reject malicious content |
+| **PII Detection** | Email addresses, phone numbers, SSN, credit cards | Warn (configurable to reject) |
+| **Format Validation** | Supported file types (txt, md, pdf, html) | Reject unsupported formats |
+| **Metadata** | Required fields (source), recommended fields (filename, file_type) | Warn on incomplete metadata |
+
+#### Validation in Action
+
+```python
+from app.services.validator import DocumentValidator
+
+# Create validator with custom settings
+validator = DocumentValidator(
+    min_content_length=100,      # Minimum 100 characters
+    enable_pii_detection=True,   # Detect PII
+    strict_mode=False            # Warnings only (not errors)
+)
+
+# Validate a document
+result = validator.validate(document)
+
+if result.is_valid:
+    print("Document is valid!")
+    if result.warnings:
+        print(f"Warnings: {result.warnings}")
+else:
+    print(f"Validation failed: {result.errors}")
+```
+
+#### Validation Rules
+
+- **Empty Content**: Documents with empty or whitespace-only content are rejected
+- **Minimum Length**: Content below 50 characters is rejected (configurable)
+- **Maximum Length**: Content exceeding 10MB is rejected
+- **Security Patterns**: Malicious patterns (XSS, SQL injection, etc.) are rejected
+- **PII Warnings**: PII detection generates warnings but doesn't block (unless strict_mode=True)
+- **Format Support**: Only txt, md, pdf, and html formats are supported
+- **Metadata**: Documents must have at least a 'source' field in metadata
+
+#### API Response with Validation
+
+When documents fail validation during ingestion, the API returns:
+
+```json
+{
+  "detail": {
+    "message": "No valid documents after validation",
+    "validation_errors": [
+      {
+        "source": "malicious.txt",
+        "errors": ["[SECURITY_XSS] Potential XSS attack pattern detected"]
+      },
+      {
+        "source": "empty.txt",
+        "errors": ["[EMPTY_CONTENT] Document content is empty"]
+      }
+    ]
+  }
+}
 ```
 
 ### Rate Limiting

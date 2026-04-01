@@ -13,10 +13,14 @@ import os
 import uuid
 
 from app.core.logging_config import get_logger
+from app.services.validator import DocumentValidator
 
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+# Initialize validator with default settings
+validator = DocumentValidator()
 
 
 class DocumentIngestRequest(BaseModel):
@@ -146,11 +150,51 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         # Load documents
         logger.info(f"Loading documents from: {request.source_path}")
         documents = DocumentLoader.load_directory(request.source_path)
-        
+
         if not documents:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No documents found in the specified path"
+            )
+
+        # Validate documents before processing
+        logger.info(f"Validating {len(documents)} documents before ingestion")
+        validation_results = validator.validate_batch(documents)
+
+        # Separate valid and invalid documents
+        valid_documents = []
+        validation_errors = []
+
+        for doc, result in zip(documents, validation_results):
+            if result.is_valid:
+                valid_documents.append(doc)
+                # Log warnings if any
+                if result.warnings:
+                    logger.warning(
+                        f"Document {doc.metadata.get('source', 'unknown')} "
+                        f"has warnings: {result.warnings}"
+                    )
+            else:
+                error_messages = [str(e) for e in result.errors]
+                validation_errors.append({
+                    'source': doc.metadata.get('source', 'unknown'),
+                    'errors': error_messages
+                })
+                logger.warning(
+                    f"Document {doc.metadata.get('source', 'unknown')} "
+                    f"failed validation: {error_messages}"
+                )
+
+        # Update statistics to reflect only valid documents
+        documents = valid_documents
+
+        if not documents:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "No valid documents after validation",
+                    "validation_errors": validation_errors
+                }
             )
         
         # Split documents into chunks
@@ -182,13 +226,18 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         # Save index
         if hasattr(vector_db, 'save'):
             vector_db.save(settings.faiss_index_path)
-        
+
+        # Prepare message with validation info
+        message = f"Successfully ingested {len(documents)} documents"
+        if validation_errors:
+            message += f" ({len(validation_errors)} documents failed validation)"
+
         return DocumentIngestResponse(
             success=True,
             documents_processed=len(documents),
             chunks_created=len(chunks),
             collection=request.collection or "default",
-            message=f"Successfully ingested {len(documents)} documents"
+            message=message
         )
     
     except FileNotFoundError as e:
@@ -286,7 +335,30 @@ async def upload_document(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Unsupported file type: {file_ext}"
                 )
-            
+
+            # Validate documents before processing
+            validation_results = validator.validate_batch(documents)
+
+            # Check if any document failed validation
+            for doc, result in zip(documents, validation_results):
+                if not result.is_valid:
+                    error_messages = [str(e) for e in result.errors]
+                    logger.warning(
+                        f"Uploaded file {file.filename} failed validation: {error_messages}"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail={
+                            "message": "Document validation failed",
+                            "file": file.filename,
+                            "errors": error_messages
+                        }
+                    )
+                elif result.warnings:
+                    logger.warning(
+                        f"Uploaded file {file.filename} has warnings: {result.warnings}"
+                    )
+
             # Split and embed
             splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
             chunks = splitter.split_documents(documents)

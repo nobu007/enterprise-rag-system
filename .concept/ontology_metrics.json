@@ -59,5 +59,13 @@
     "delta": "independent recomputation of all 8 quality gates against current code (all PASS). Full evidence sweep found INV-VAL-001 inaccurate on 3 counts: (a) statement over-specified rejection as HTTP 422 only — actual is layer-based 400(malicious)/413(oversize)/422(Pydantic default)/429(rate-limit); (b) statement over-claimed 'returned as standard ErrorResponse' — HTTPException(400) returns FastAPI default {detail}, not the ErrorResponse schema (only 429 handler shapes to it); (c) evidence cited tests/unit/test_validation_middleware.py#L297 with quote 'assert response.status_code == 422' which does not exist (L297 is inside test_get_client_ip_x_forwarded_for; no strict ==422 assertion exists, real assertions are `in [400,422,429]`). Rewrote INV-VAL-001 statement+evidence against verified code (validation.py#L20,L109,L207; test L192; schemas L28-29); related_terms DocumentValidator->SecurityValidator (the detector the middleware actually uses). invariants stay 20. Also corrected Q3 methodology: test_files 28(all .py)->24(strict test_*.py), Q3 71.4%->83.3%.",
     "code_changed_since_bootstrap": false,
     "quality_gate_all_pass": true
+  },
+  "cycle6_maintenance": {
+    "phase": "maintenance",
+    "boot_decision": "Q1..Q4 all pass -> maintenance; pivoted to the one dimensions prior cycles recorded but never line-verified: Q2 mappings code_symbol resolution, plus charter milestone-status accuracy",
+    "delta": "charter.yml: MS-004 status planned->active. Verified all 3 MS-004 deliverables are implemented AND have acceptance tests (SSE streaming: query.py#L279-L304 StreamingRAGService, tested test_feature_16.py; Prometheus /metrics: main.py#L186 prometheus_fastapi_instrumentator + core/metrics.py, tested test_metrics.py; FastAPI routes query/ingest/health registered main.py#L246-L248, tested test_api_routes.py/test_api_docs.py). 'planned' understated reality; 'active' matches MS-001/002/003. Not promoted to 'done' because acceptance tests cannot be executed here (test env unprovisioned: fastapi/prometheus_client missing at collection). Q2 independently line-verified: all 63 mappings code_symbols resolve to a real file path AND a declared class/def/assignment (0 file-missing, 0 symbol-missing) -> confirms Q2=100%. Charter deliverables line still lists /documents route (dead code per CFLT-DOCS-001); left untouched to keep delta minimal — registration nuance already captured in conflicts.",
+    "q2_code_symbol_resolution_verified": "63/63 code_symbols resolve (file exists + class/def/assignment declared); 0 file-missing, 0 symbol-missing",
+    "code_changed_since_bootstrap": false,
+    "quality_gate_all_pass": true
   }
 }

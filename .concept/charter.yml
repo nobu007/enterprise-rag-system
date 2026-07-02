@@ -75,7 +75,7 @@ milestones:
       - type: "integration"
         target: "tests/integration/test_rag_integration.py"
     priority: "P2"
-    status: "planned"
+    status: "active"
 
 work_policy:
   default_mode: "commit"

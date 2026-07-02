@@ -8,11 +8,11 @@
   "draft_terms": 0,
   "invariants": 15,
   "mappings": 31,
-  "ambiguities": 2,
-  "conflicts": 2,
+  "ambiguities": 3,
+  "conflicts": 3,
   "term_queue_pending": 0,
   "test_files": 28,
-  "decisions_md_lines": 50,
+  "decisions_md_lines": 71,
   "metrics": {
     "Q1_ontology_coverage_class_resolution_pct": 96.8,
     "Q1_note": "30/31 terms resolve to concrete classes in app/; all app/ subpackages have anchor terms",
@@ -30,6 +30,11 @@
     "boot_decision": "Q1..Q4 all pass -> maintenance (sync code <-> concept)",
     "delta": "conflicts.yml: +2 (CFLT-VECTORDB-001 Weaviate, CFLT-DRG-001 Document Relationship Graph); resolves D-BOOT-005",
     "code_changed_since_bootstrap": false,
+    "quality_gate_all_pass": true
+  },
+  "cycle2_maintenance": {
+    "phase": "maintenance",
+    "delta": "exhaustive README Features(L70-L83) verification: +1 conflict CFLT-AUDIT-001 (audit logging unimplemented), +1 ambiguity AMB-003 (auth/authorization partial). D-BOOT-005 verification now complete (all 13 features checked).",
     "quality_gate_all_pass": true
   }
 }

@@ -29,10 +29,28 @@ conflicts:
       decision_key: "AUTO:DocumentRelationshipGraph.feature_existence:unimplemented"
       summary: "コード実装を正とし、Document Relationship Graph は未実装(README のみの構想)と扱う。概念辞書に term を追加しない(実装根拠がないため Rule 1/4)。README の記述と実装の乖離は本矛盾に記録し、解決は機能実装または README 修正に委ねる（概念整備のスコープ外）。"
 
-# 備考（D-BOOT-005 解決）:
+  - id: "CFLT-AUDIT-001"
+    term: "Tenant"
+    about: "feature_existence"
+    severity: "medium"
+    nli: "contradiction"
+    items:
+      - claim: "README は監査ログ(Audit logging)を機能として挙げ、テナント毎の監査ログ・テナント活動の監視まで謳う"
+        source: "doc:README.md#L72 ('Audit logging') / doc:README.md#L1066 ('Audit logging per tenant') / doc:README.md#L1286 ('Monitor tenant activity through audit logs')"
+      - claim: "app/ 内に audit/access log/event log 実装は一切存在しない（middleware は Validation/Tenant/RequestID の3つのみ。role のヒットは LLM メッセージ role であり RBAC ではない）"
+        source: "code:app/ (grep audit|access.?log|event.?log -> 0 件) / code:app/middleware/ (validation.py, tenant.py, request_id.py のみ)"
+    status: "open"
+    active_workaround:
+      decision_key: "AUTO:AuditLogging.feature_existence:unimplemented"
+      summary: "コード実装を正とし、監査ログ機能は未実装(README のみ)と扱う。概念辞書に term を追加しない(実装根拠がないため Rule 1/4)。解決は監査ログ実装または README 修正に委ねる（概念整備のスコープ外）。"
+
+# 備考（D-BOOT-005 解決 — 完了）:
 # bootstrap(cycle 0) は「README 言及の Weaviate/Chroma/DRG の実装網羅度は後続サイクルで検証」と保留していた。
-# 本サイクルで検証完了: Weaviate と DRG は README↔コードの矛盾として open 記録。
-# Chroma は README 上は主要バックエンド表に含まれず(設定 env var のみ: README#L1523, config.py#L28)。
-# chromadb は requirements.txt#L20 に依存存在するが ChromaVectorDB 実装なし → CFLT-VECTORDB-001 と
-# 同系列の「未使用依存/未実装バックエンド」だが README 上の強い主張がないため低重要度と判断、
-# VectorDB 系矛盾に包含させる（個別 CFLT は作成せず）。
+# 検証は README Features セクション(L70-L83) の全13項目を網羅済み:
+#   実装あり(✓): Multi-tenancy, Document validation, Security middleware, Request size limit,
+#                Security headers, IP rate limiting, PostgreSQL pooling, Request ID tracking, Document Encryption,
+#                PII detection(検出本体あり; redaction は部分)
+#   矛盾(✗): Weaviate(CFLT-VECTORDB-001), Document Relationship Graph(CFLT-DRG-001),
+#            Audit logging(CFLT-AUDIT-001)
+#   曖昧(部分実装): Authentication and authorization → AMB-003 (tenant API-key+status のみ、RBAC 無し)
+# Chroma は README 上は主要バックエンド表に含まれず(設定 env var のみ)。chromadb 依存は未使用 → VectorDB 系に包含。

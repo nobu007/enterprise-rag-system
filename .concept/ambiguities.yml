@@ -18,3 +18,14 @@ ambiguities:
     evidence:
       - source: "app/core/tenant.py#L138-L142"
         quote: "# In production, this would use a database / self._tenants: Dict[str, Tenant] = {}"
+
+  - id: "AMB-003"
+    related_terms: ["Tenant", "TenantManager"]
+    status: "open"
+    statement: "README は『Authentication and authorization』を機能として挙げるが、実装は tenant API-key 対応と Tenant.is_authenticated(ステータス検査) のみ。AuthMiddleware・RBAC・権限(role/permission)モデルは存在しない。『認証』は API-key で部分的に成立するが『認可』は実質未実装。"
+    auto_decision: "テナント API-key 認証のみ実装済み、ロールベース認可(RBAC)は未実装(README は aspirational)と扱う。概念辞書に Auth 用語を追加せず、tenant 既存 term 配下の部分実装として記録。解決は認可実装または README 修正に委ねる（概念整備のスコープ外）。"
+    confidence: 0.6
+    evidence:
+      - source: "doc:README.md#L70 ('Authentication and authorization')"
+      - source: "code:app/core/tenant.py#L123 ('def is_authenticated(self) -> bool:')"
+      - source: "code:app/ (grep 'class .*Auth|require_auth|rbac|permission' -> 該当なし。middleware は Validation/Tenant/RequestID のみ)"

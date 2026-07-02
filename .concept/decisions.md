@@ -48,3 +48,25 @@
 - Expires After Runs: 20
 - Linked: CFLT-DRG-001 / term Document
 - Revert Triggers: DRG 実装追加(networkx + relationships route)、または README から DRG 削除
+
+## 2026-07-02 maintenance (cycle 2 / README feature 網羅検証)
+
+### AUTO:AuditLogging.feature_existence:unimplemented
+- Status: ACTIVE
+- Chosen: 監査ログ(Audit logging) は未実装(README のみ)。概念辞書に term 追加なし。
+- Policy: code_is_truth + Rule 1/4
+- Expires After Runs: 20
+- Linked: CFLT-AUDIT-001 / term Tenant
+- Revert Triggers: 監査ログ実装追加、または README から audit logging 削除
+
+### AUTO:Auth.authorization:partial_apikey_only
+- Status: ACTIVE
+- Chosen: 認証=tenant API-key のみ部分実装、認可(RBAC)=未実装。README の 'authorization' は aspirational。
+- Policy: code_is_truth + Rule 1/4
+- Expires After Runs: 20
+- Linked: AMB-003 / term Tenant
+- Revert Triggers: 認可(RBAC/permission)実装追加、または README の認可表現を API-key 認証に合わせて修正
+
+### D-BOOT-005 完了宣言
+- README Features(L70-L83) 全13項目の実装網羅度検証が完了。結果は conflicts.yml 備考に集約。
+- 以後の README↔コード検証は差分発生時（コード/README 変更時）のみ再実施。

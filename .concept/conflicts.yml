@@ -1,4 +1,38 @@
-conflicts: []
-# 現在、仕様（README/docs）とコード間に検出された矛盾は無し。
-# README に言及のある機能（Weaviate/Chroma バックエンド、Document Relationship Graph 等）の
-# 実装網羅度は後続サイクルで個別に検証し、矛盾があればここに記録する。
+conflicts:
+  - id: "CFLT-VECTORDB-001"
+    term: "VectorDB"
+    about: "backend_coverage"
+    severity: "medium"
+    nli: "contradiction"
+    items:
+      - claim: "README とモジュール docstring は Weaviate をサポートベクタストアとして挙げ、requirements.txt も weaviate-client を依存に持つ"
+        source: "doc:README.md#L1336 ('| Vector Store | Pinecone, Weaviate, FAISS |') / doc:app/core/vectordb.py#L5 ('supporting Pinecone, Weaviate, and FAISS') / dep:requirements.txt#L18 (weaviate-client==3.26.0)"
+      - claim: "実装は PineconeVectorDB(L74) と FAISSVectorDB(L198) のみ。WeaviateVectorDB クラスは存在しない"
+        source: "code:app/core/vectordb.py#L74-L198 (concrete subclasses: PineconeVectorDB, FAISSVectorDB only)"
+    status: "open"
+    active_workaround:
+      decision_key: "AUTO:VectorDB.backend_coverage:implemented_only"
+      summary: "コード実装を正(Truth)とし、VectorDB の concrete バックエンドは Pinecone+FAISS のみと扱う。ontology/mappings は既に実装側を反映済み。README/docstring/依存の Weaviate 記述は aspirational(未実装) として本矛盾に記録し、解決は docs 修正または Weaviate 実装に委ねる（概念整備のスコープ外）。"
+
+  - id: "CFLT-DRG-001"
+    term: "Document"
+    about: "feature_existence"
+    severity: "medium"
+    nli: "contradiction"
+    items:
+      - claim: "README は Document Relationship Graph(NetworkX) を完成機能として説明し、API エンドポイント(/api/v1/relationships/*)・関係タイプ・経路探索・中心性・クラスタリング・エクスポートまで詳細に記載"
+        source: "doc:README.md#L81 ('Document Relationship Graph for building and querying document relationships') / doc:README.md#L920-L940 (節「Document Relationship Graph」, curl 例 POST /api/v1/relationships/documents)"
+      - claim: "app/ 内に NetworkX import・relationship 関連コード・API route は一切存在せず、requirements.txt にも networkx は無い"
+        source: "code:app/ (grep networkx/relationship -> 0 件) / code:app/api/routes/ (documents.py, health.py, ingest.py, query.py のみ。relationships route 無し) / dep:requirements.txt (networkx 欠落)"
+    status: "open"
+    active_workaround:
+      decision_key: "AUTO:DocumentRelationshipGraph.feature_existence:unimplemented"
+      summary: "コード実装を正とし、Document Relationship Graph は未実装(README のみの構想)と扱う。概念辞書に term を追加しない(実装根拠がないため Rule 1/4)。README の記述と実装の乖離は本矛盾に記録し、解決は機能実装または README 修正に委ねる（概念整備のスコープ外）。"
+
+# 備考（D-BOOT-005 解決）:
+# bootstrap(cycle 0) は「README 言及の Weaviate/Chroma/DRG の実装網羅度は後続サイクルで検証」と保留していた。
+# 本サイクルで検証完了: Weaviate と DRG は README↔コードの矛盾として open 記録。
+# Chroma は README 上は主要バックエンド表に含まれず(設定 env var のみ: README#L1523, config.py#L28)。
+# chromadb は requirements.txt#L20 に依存存在するが ChromaVectorDB 実装なし → CFLT-VECTORDB-001 と
+# 同系列の「未使用依存/未実装バックエンド」だが README 上の強い主張がないため低重要度と判断、
+# VectorDB 系矛盾に包含させる（個別 CFLT は作成せず）。

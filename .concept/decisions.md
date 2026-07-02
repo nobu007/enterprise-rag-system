@@ -26,6 +26,25 @@
 - 直交する概念（クロスエンコーダ精度向上 vs 複数特徴量の重み付け整列）。
 - default: re-ranking 有効 / RANKING_ENABLED=False。conflicts ではなく ambiguities に記録。
 
-### D-BOOT-005: README 言及の未検証機能は conflicts 空（保留）
-- Weaviate/Chroma バックエンド、Document Relationship Graph 等の実装網羅度は
-  後続サイクルで検証し、矛盾があれば conflicts.yml に記録。今サイクルでは断言しない（Rule 4）。
+### D-BOOT-005: README 言及の未検証機能は conflicts 空（保留）~~（→RESOLVED: cycle 1 で検証完了）~~
+- ~~Weaviate/Chroma バックエンド、Document Relationship Graph 等の実装網羅度は
+  後続サイクルで検証し、矛盾があれば conflicts.yml に記録。今サイクルでは断言しない（Rule 4）。~~
+- **RESOLVED (cycle 1)**: 検証完了 → CFLT-VECTORDB-001(Weaviate), CFLT-DRG-001(Document Relationship Graph) として記録。Chroma は README の強い主張がないため CFLT-VECTORDB-001 に包含。
+
+## 2026-07-02 maintenance (cycle 1 / README↔code 同期)
+
+### AUTO:VectorDB.backend_coverage:implemented_only
+- Status: ACTIVE
+- Chosen: コード実装を正とし concrete バックエンドは Pinecone+FAISS のみ。Weaviate は未実装(aspirational)。
+- Policy: code_is_truth + safety（実装根拠のない機能を概念として確定しない）
+- Expires After Runs: 20
+- Linked: CFLT-VECTORDB-001 / term VectorDB
+- Revert Triggers: WeaviateVectorDB 実装追加、または README/docstring から Weaviate 削除
+
+### AUTO:DocumentRelationshipGraph.feature_existence:unimplemented
+- Status: ACTIVE
+- Chosen: Document Relationship Graph は未実装(README のみ)。概念辞書に term 追加なし。
+- Policy: code_is_truth + Rule 1/4（実装根拠なき新語・確定禁止）
+- Expires After Runs: 20
+- Linked: CFLT-DRG-001 / term Document
+- Revert Triggers: DRG 実装追加(networkx + relationships route)、または README から DRG 削除

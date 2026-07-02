@@ -1,7 +1,9 @@
 {
-  "run_index": 0,
-  "last_run_id": "concept-bootstrap-20260702",
-  "phase": "initial_generation",
-  "boot_decision": "Q1=NO -> first-time generation (section 6)",
+  "run_index": 1,
+  "last_run_id": "concept-maintenance-20260702-041341",
+  "phase": "maintenance",
+  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES,Q4=all 8 quality criteria pass -> maintenance phase (code<->concept sync)",
+  "previous_phase": "initial_generation (cycle 0 bootstrap)",
+  "cycle1_delta": "conflicts.yml +2 conflicts (Weaviate, Document Relationship Graph) resolving D-BOOT-005; metrics + decisions cache refreshed",
   "created_at_note": "bootstrap; timestamp injected post-workflow per spec (no Date.now in scripts)"
 }

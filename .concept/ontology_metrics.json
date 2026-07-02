@@ -9,10 +9,10 @@
   "invariants": 20,
   "mappings": 31,
   "ambiguities": 3,
-  "conflicts": 3,
+  "conflicts": 5,
   "term_queue_pending": 0,
   "test_files": 28,
-  "decisions_md_lines": 78,
+  "decisions_md_lines": 91,
   "metrics": {
     "Q1_ontology_coverage_class_resolution_pct": 96.8,
     "Q1_note": "30/31 terms resolve to concrete classes in app/; all app/ subpackages have anchor terms",
@@ -40,6 +40,13 @@
   "cycle3_maintenance": {
     "phase": "maintenance",
     "delta": "raised Q3 (53.6% -> 71.4%) by extracting 5 test-grounded invariants (INV-RES-003 circuit-breaker state machine, INV-CACHE-002 key normalization, INV-CACHE-003 L1 resilience, INV-CORE-002 collection isolation, INV-RES-004 rate-limit identifier). invariants 15 -> 20 (limit 60).",
+    "quality_gate_all_pass": true
+  },
+  "cycle4_maintenance": {
+    "phase": "maintenance",
+    "boot_decision": "Q1..Q4 all pass -> maintenance; pivoted to app/main.py router-registration as drift vector",
+    "delta": "main.py router audit found: (1) CFLT-DOCS-001 (high) documents router defined (documents.py#L20, 5 routes) + exported by routes/__init__.py but NEVER imported/included in main.py#L24,L246-248 -> /documents/* is unreachable dead code, contradicting main.py docstring#L139, charter MS-004, and INV-IF-001. (2) CFLT-APIPATH-001 (low) README/mappings '/query' vs actual '/api/v1/query/'. Corrected INV-IF-001: dropped dead /documents from live API surface AND replaced inaccurate evidence quote ('query_path is not None' absent in test) with real tests test_api_routes.py#L89-L101,L119-L131. conflicts 3 -> 5.",
+    "code_changed_since_bootstrap": false,
     "quality_gate_all_pass": true
   }
 }

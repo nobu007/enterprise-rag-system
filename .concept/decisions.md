@@ -70,3 +70,22 @@
 ### D-BOOT-005 完了宣言
 - README Features(L70-L83) 全13項目の実装網羅度検証が完了。結果は conflicts.yml 備考に集約。
 - 以後の README↔コード検証は差分発生時（コード/README 変更時）のみ再実施。
+
+## 2026-07-02 maintenance (cycle 4 / app/main.py ルータ登録監査)
+
+### AUTO:DocumentsRouter.route_registration:unregistered_dead_code
+- Status: ACTIVE
+- Chosen: documents ルータ(documents.py#L20, 5 routes)は定義+エクスポート済みだが main.py で import/include されず到達不能。ライブAPI面は /query,/ingest,/health のみ。/documents/* はデッドコード。
+- Policy: code_is_truth(main.py の登録状態が正) + Rule 1/4
+- Expires After Runs: 20
+- Linked: CFLT-DOCS-001 / term Document / INV-IF-001 是正
+- Revert Triggers: app/main.py に `include_router(documents.router, prefix=...)` 追加（実装）、または documents.py 削除
+
+### AUTO:QueryApiPath.path_contract:versioned_prefix
+- Status: ACTIVE
+- Chosen: クエリAPI実パスは /api/v1/query/{,batch,stream}。mappings.yml の '/query' 表記は論理パス簡略表現として許容。
+- Policy: code_is_truth(実際のマウントパス) + 表現簡略化の許容
+- Expires After Runs: 20
+- Linked: CFLT-APIPATH-001 / term QueryRequest
+- Revert Triggers: README curl 例のパス修正、またはマウント prefix 変更
+

@@ -44,7 +44,37 @@ conflicts:
       decision_key: "AUTO:AuditLogging.feature_existence:unimplemented"
       summary: "コード実装を正とし、監査ログ機能は未実装(README のみ)と扱う。概念辞書に term を追加しない(実装根拠がないため Rule 1/4)。解決は監査ログ実装または README 修正に委ねる（概念整備のスコープ外）。"
 
-# 備考（D-BOOT-005 解決 — 完了）:
+  - id: "CFLT-DOCS-001"
+    term: "Document"
+    about: "route_registration"
+    severity: "high"
+    nli: "contradiction"
+    items:
+      - claim: "documents ルータは実装され routes/__init__.py でエクスポートされ、5エンドポイント(/documents/ingest, /upload, /stats, /batch, /batch/{task_id}/status)を持つ。main.py の docstring と README はこれらを稼働中のレート制限付きエンドポイントとして説明する"
+        source: "code:app/api/routes/documents.py#L20 (router = APIRouter(prefix=\"/documents\", ...)) / code:app/api/routes/documents.py#L86,L255,L406,L464,L611 (5 routes) / code:app/api/routes/__init__.py#L5,L7 (exports documents) / doc:app/main.py#L139 ('/api/v1/documents/ingest endpoint: 20 requests/minute')"
+      - claim: "main.py は documents ルータを import も include_router もしない。取り込まれているのは health/query/ingest の3ルータのみ。/documents/* エンドポイントは到達不能なデッドコード。いかなるテストも /documents 経路を検証しない"
+        source: "code:app/main.py#L24 ('from app.api.routes import query, health, ingest' — documents 無し) / code:app/main.py#L246-L248 (include_router は health/query/ingest のみ) / tests/ (grep 'documents/' -> 0 件)"
+    status: "open"
+    active_workaround:
+      decision_key: "AUTO:DocumentsRouter.route_registration:unregistered_dead_code"
+      summary: "コード実装(main.py の登録状態)を正とし、/documents/* エンドポイントは現在 到達不能なデッドコード(定義済みだがルータ未登録)と扱う。ライブな外部 API 面は /query, /ingest, /health のみ。これにより INV-IF-001 を是正済み(/documents をライブAPIから除外)。概念辞書に Document 系ルート term を追加しない(稼働根拠がないため Rule 1/4)。解決は app/main.py への include_router 追加(実装)に委ねる（概念整備のスコープ外）。"
+
+  - id: "CFLT-APIPATH-001"
+    term: "QueryRequest"
+    about: "api_path_contract"
+    severity: "low"
+    nli: "contradiction"
+    items:
+      - claim: "README の API 例と mappings.yml はクエリエンドポイントを '/query' と表記する"
+        source: "doc:README.md#L88-L91 (curl -X POST http://localhost:8000/query) / concept:.concept/mappings.yml (api: 'POST /query', 'POST /query/stream', 'POST /query/batch')"
+      - claim: "実際のパスは '/api/v1/query/' (main.py prefix '/api/v1' + query router prefix '/query' + route '/')。batch は '/api/v1/query/batch'、stream は '/api/v1/query/stream'。main.py 自身の docstring も '/api/v1/query/' を正として記載"
+        source: "code:app/api/routes/query.py#L23 (router = APIRouter(prefix=\"/query\", ...)) / code:app/main.py#L247 (include_router prefix=\"/api/v1\") / doc:app/main.py#L137 ('/api/v1/query/ endpoint: 60 requests/minute')"
+    status: "open"
+    active_workaround:
+      decision_key: "AUTO:QueryApiPath.path_contract:versioned_prefix"
+      summary: "コード(実際のマウントパス)を正とし、クエリAPIは '/api/v1/query/{,batch,stream}' と扱う。mappings.yml の '/query' 系表記は論理パスの簡略表現として許容し、正確なパスは本矛盾に記録。README の curl 例の修正は docs 整備に委ねる（概念整備のスコープ外）。"
+
+# 備考（D-BOOT-005 解決 — 完了 + cycle4 拡張）:
 # bootstrap(cycle 0) は「README 言及の Weaviate/Chroma/DRG の実装網羅度は後続サイクルで検証」と保留していた。
 # 検証は README Features セクション(L70-L83) の全13項目を網羅済み:
 #   実装あり(✓): Multi-tenancy, Document validation, Security middleware, Request size limit,
@@ -54,3 +84,9 @@ conflicts:
 #            Audit logging(CFLT-AUDIT-001)
 #   曖昧(部分実装): Authentication and authorization → AMB-003 (tenant API-key+status のみ、RBAC 無し)
 # Chroma は README 上は主要バックエンド表に含まれず(設定 env var のみ)。chromadb 依存は未使用 → VectorDB 系に包含。
+#
+# cycle4 (2026-07-02) — main.py のルータ登録を起点とした API面のドリフト検証:
+#   矛盾(✗): documents ルータが定義済みだが main.py で未登録(デッドコード) → CFLT-DOCS-001 (high)。
+#            INV-IF-001 は /documents をライブAPIと過大表明していたため是正済み。
+#   矛盾(✗): README/mappings の '/query' 表記 vs 実装の '/api/v1/query/' → CFLT-APIPATH-001 (low)。
+#   ライブな外部API面(確定): /api/v1/query/{,batch,stream}, /api/v1/ingest[...], /health[/detailed], /cache/stats。

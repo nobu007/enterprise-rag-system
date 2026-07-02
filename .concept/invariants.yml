@@ -102,11 +102,13 @@ invariants:
     related_terms: ["QueryRequest", "IngestRequest", "ErrorResponse"]
     status: "stable"
     strength: "hard"
-    statement: "外部 API（/query, /ingest, /documents, /health）は Pydantic スキーマで入出力を型検証し、検証失敗時は標準エラーで応答する。"
-    rationale: "API 契約を型で保証し、呼び出し側の一貫性を保つため。"
+    statement: "稼働中の外部 API 面は /api/v1/query/{,batch,stream}, /api/v1/ingest(/ingest/status/{task_id}), /health(/health/detailed) のみ。これらは Pydantic スキーマで入出力を型検証し、検証失敗時は標準 ErrorResponse で応答する。/documents/* はルータが main.py で未登録のため到達不能(デッドコード)でありライブAPI面には含まない(CFLT-DOCS-001 参照)。"
+    rationale: "API 契約を型で保証し、呼び出し側の一貫性を保つため。ライブ面のみを不変条件とし、未登録のデッドコードを含めないことで実態との整合を保つ。"
     evidence:
-      - source: "tests/unit/test_api_routes.py#L82-L108"
-        quote: "assert query_path is not None ... assert ingest_path is not None"
+      - source: "tests/unit/test_api_routes.py#L89-L101"
+        quote: "test_query_request_top_k_bounds: QueryRequest(top_k=0|21) -> pytest.raises(Exception)（範囲 1-20 をスキーマ強制）"
+      - source: "tests/unit/test_api_routes.py#L119-L131"
+        quote: "test_query_endpoint_success: client.post('/query/') -> status_code == 200, 構造化応答(answer/confidence/latency_ms/tokens_used/sources)"
 
   - id: "INV-CORE-001"
     related_terms: ["VectorDB", "EmbeddingModel"]

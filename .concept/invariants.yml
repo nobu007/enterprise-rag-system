@@ -78,15 +78,22 @@ invariants:
       - source: "app/core/circuit_breaker.py#L49-L57"
 
   - id: "INV-VAL-001"
-    related_terms: ["DocumentValidator", "ErrorResponse"]
+    related_terms: ["ErrorResponse", "SecurityValidator"]
     status: "stable"
     strength: "hard"
-    statement: "不正なリクエストは HTTP 422（検証エラー）で拒否され、標準 ErrorResponse で返却される。"
-    rationale: "入力契約を入口で守り、下流へ不正データを流さないため。"
+    statement: "不正・悪意あるリクエストは入口境界(ValidationMiddleware)で拒否され RAG パイプラインに到達しない。拒否ステータスは原因層により決まる: 悪意ある内容(XSS/SQLi/パストラバーサル/コマンドインジェクション)は HTTP 400、要求サイズ超過は 413、Pydantic スキーマ違反は FastAPI 既定の 422、レート制限超過は 429。ErrorResponse はこれらの標準エラースキーマ(error/message/details)として定義される（429 ハンドラがこの形状で返却; HTTPException 経路は FastAPI 既定の {detail} 形式）。"
+    rationale: "入力契約を入口で守り、下流へ不正データを流さないため。原因層別の正確なステータスを示すことで、誤って 422 固定と過大表明していた以前の記述を是正する。"
     evidence:
-      - source: "tests/unit/test_validation_middleware.py#L297"
-        quote: "assert response.status_code == 422  # Validation error"
+      - source: "app/middleware/validation.py#L20"
+        quote: "from app.core.security import SecurityValidator"
+      - source: "app/middleware/validation.py#L207"
+        quote: "raise HTTPException(400, detail=msg)"
+      - source: "app/middleware/validation.py#L109"
+        quote: "raise HTTPException(413, detail=msg)"
+      - source: "tests/unit/test_validation_middleware.py#L192"
+        quote: "assert response.status_code in [400, 422, 429]"
       - source: "app/models/schemas.py#L28-L29"
+        quote: "class ErrorResponse(BaseModel): \"\"\"Standard error response schema / 標準エラーレスポンス\"\"\""
 
   - id: "INV-OBS-001"
     related_terms: ["Settings", "CacheManager"]

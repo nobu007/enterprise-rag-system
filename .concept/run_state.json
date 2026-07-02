@@ -1,12 +1,14 @@
 {
-  "run_index": 4,
-  "last_run_id": "concept-maintenance-20260702-052115",
+  "run_index": 5,
+  "last_run_id": "concept-maintenance-cycle5",
   "phase": "maintenance",
-  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES,Q4=all 8 quality criteria pass -> maintenance phase (router-registration drift audit)",
-  "previous_phase": "initial_generation (cycle 0 bootstrap)",
+  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria re-pass (independently recomputed) -> maintenance phase (evidence-accuracy verification sweep)",
+  "previous_phase": "maintenance (cycle 4 router-registration drift audit)",
   "cycle1_delta": "conflicts.yml +2 conflicts (Weaviate, Document Relationship Graph) resolving D-BOOT-005",
   "cycle2_delta": "exhaustive README Features verification: +CFLT-AUDIT-001 (audit logging), +AMB-003 (auth/authorization partial). D-BOOT-005 verification complete (all 13 README features checked).",
   "cycle3_delta": "raised Q3 53.6%->71.4% via +5 test-grounded invariants (INV-RES-003/INV-CACHE-002/INV-CACHE-003/INV-CORE-002/INV-RES-004). invariants 15->20.",
   "cycle4_delta": "main.py router-registration audit: +CFLT-DOCS-001 (high, documents router defined but NEVER imported/included in main.py -> /documents/* dead code), +CFLT-APIPATH-001 (low, /query vs /api/v1/query/). Corrected INV-IF-001 (dropped dead /documents from live API surface; replaced inaccurate 'query_path' evidence with real tests test_api_routes.py#L89-L101,L119-L131). conflicts 3->5. All 8 quality gates still PASS.",
+  "cycle5_delta": "anti-trust-the-numbers verification sweep. Independently recomputed all 8 quality gates vs current code (all PASS). Re-checked every evidence ref (32 ontology + 29 invariant). Found+corrected INV-VAL-001: statement over-specified rejection as 422-only (actual layer-based 400/413/422/429) and over-claimed ErrorResponse shape (HTTPException returns FastAPI {detail}); evidence cited nonexistent L297/`==422`. Rewrote against verified code. related_terms DocumentValidator->SecurityValidator. Corrected Q3 methodology test_files 28->24 (strict), Q3 71.4%->83.3%. invariants remain 20.",
+  "evidence_audit_complete_cycle5": "all 61 evidence refs now resolve to real files/lines; no remaining known drift",
   "created_at_note": "bootstrap; timestamp injected post-workflow per spec (no Date.now in scripts)"
 }

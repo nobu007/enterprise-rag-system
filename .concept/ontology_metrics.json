@@ -11,19 +11,23 @@
   "ambiguities": 3,
   "conflicts": 5,
   "term_queue_pending": 0,
-  "test_files": 28,
+  "test_files": 24,
+  "test_files_note": "strict test_*.py/*_test.py count under tests/ (excludes __init__.py x3 and conftest.py x1). Prior cycles reported 28 (all .py incl. non-test); methodology corrected in cycle 5.",
   "decisions_md_lines": 91,
   "metrics": {
     "Q1_ontology_coverage_class_resolution_pct": 96.8,
-    "Q1_note": "30/31 terms resolve to concrete classes in app/; all app/ subpackages have anchor terms",
+    "Q1_note": "30/31 terms resolve to a concrete `class <name>` in app/; RateLimiter is the lone non-class term (slowapi-based, evidenced by helper fns get_user_id/get_client_ip). All app/ subpackages have anchor terms.",
     "Q2_mapping_rate_pct": 100.0,
-    "Q3_invariant_to_testfile_ratio_pct": 71.4,
+    "Q3_invariant_to_testfile_ratio_pct": 83.3,
+    "Q3_note": "20 invariants / 24 strict test files. (Was 71.4% using 28 = all .py incl __init__/conftest; recomputed against strict count.)",
     "Q4_draft_rate_pct": 0.0,
     "Q5_unmapped_claims_rate_pct": 0.0,
+    "Q5_note": "claims.ndjson is empty (0 claims); ratio is vacuously 0%.",
     "Q6_terms_count": 31,
     "Q7_charter_complete": true,
     "Q8_evidence_rate_pct": 100.0,
-    "evidence_line_refs_verified_cycle1": "spot-checked rag_pipeline/retrieval/encryption/concurrency/request_id evidence vs code at 99c3186 -> accurate, no drift"
+    "evidence_line_refs_verified_cycle1": "spot-checked rag_pipeline/retrieval/encryption/concurrency/request_id evidence vs code at 99c3186 -> accurate, no drift",
+    "evidence_line_refs_verified_cycle5": "full sweep: all 32 ontology evidence sources resolve to real files/lines (2 functional-evidence false-positives confirmed accurate: ContextCompressor usage @rag_pipeline.py#L58, RateLimiter fns @rate_limit.py#L14-26). All 29 invariant evidence pairs re-checked; found+fixed INV-VAL-001 (3 inaccuracies: 422-only over-specification, ErrorResponse over-claim, nonexistent L297/`==422` evidence). INV-VAL-001 now evidences validation.py#L20,L109,L207, test_validation_middleware.py#L192, schemas.py#L28-29."
   },
   "cycle1_maintenance": {
     "phase": "maintenance",
@@ -46,6 +50,13 @@
     "phase": "maintenance",
     "boot_decision": "Q1..Q4 all pass -> maintenance; pivoted to app/main.py router-registration as drift vector",
     "delta": "main.py router audit found: (1) CFLT-DOCS-001 (high) documents router defined (documents.py#L20, 5 routes) + exported by routes/__init__.py but NEVER imported/included in main.py#L24,L246-248 -> /documents/* is unreachable dead code, contradicting main.py docstring#L139, charter MS-004, and INV-IF-001. (2) CFLT-APIPATH-001 (low) README/mappings '/query' vs actual '/api/v1/query/'. Corrected INV-IF-001: dropped dead /documents from live API surface AND replaced inaccurate evidence quote ('query_path is not None' absent in test) with real tests test_api_routes.py#L89-L101,L119-L131. conflicts 3 -> 5.",
+    "code_changed_since_bootstrap": false,
+    "quality_gate_all_pass": true
+  },
+  "cycle5_maintenance": {
+    "phase": "maintenance",
+    "boot_decision": "Q1..Q4 all pass -> maintenance; pivoted to evidence-accuracy verification (full re-check of all 61 evidence refs, mandated by anti-trust-the-numbers policy)",
+    "delta": "independent recomputation of all 8 quality gates against current code (all PASS). Full evidence sweep found INV-VAL-001 inaccurate on 3 counts: (a) statement over-specified rejection as HTTP 422 only — actual is layer-based 400(malicious)/413(oversize)/422(Pydantic default)/429(rate-limit); (b) statement over-claimed 'returned as standard ErrorResponse' — HTTPException(400) returns FastAPI default {detail}, not the ErrorResponse schema (only 429 handler shapes to it); (c) evidence cited tests/unit/test_validation_middleware.py#L297 with quote 'assert response.status_code == 422' which does not exist (L297 is inside test_get_client_ip_x_forwarded_for; no strict ==422 assertion exists, real assertions are `in [400,422,429]`). Rewrote INV-VAL-001 statement+evidence against verified code (validation.py#L20,L109,L207; test L192; schemas L28-29); related_terms DocumentValidator->SecurityValidator (the detector the middleware actually uses). invariants stay 20. Also corrected Q3 methodology: test_files 28(all .py)->24(strict test_*.py), Q3 71.4%->83.3%.",
     "code_changed_since_bootstrap": false,
     "quality_gate_all_pass": true
   }

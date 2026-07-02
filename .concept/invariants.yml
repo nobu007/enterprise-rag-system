@@ -161,3 +161,59 @@ invariants:
     evidence:
       - source: "app/middleware/request_id.py#L6-L33"
         quote: "Generates or retrieves a request ID from the X-Request-ID header ... request_id = request.headers.get(\"X-Request-ID\", str(uuid.uuid4()))"
+
+  - id: "INV-RES-003"
+    related_terms: ["CircuitBreaker", "RAGPipeline"]
+    status: "stable"
+    strength: "hard"
+    statement: "CircuitBreaker は状態機械に従う: CLOSED で failure_threshold 回の連続失敗で OPEN 化(以後の要求は即時拒否)。timeout 経過後に HALF_OPEN となり、success_threshold 回の連続成功で CLOSED に復帰(failure_count は0にリセット)。HALF_OPEN 中の1回でも失敗すれば即 OPEN に戻る。"
+    rationale: "外部 LLM API 等の障害を検知して速やかに遮断し、回復を安全に試行し、安定確認後に復旧させるため。"
+    evidence:
+      - source: "tests/unit/test_circuit_breaker.py#L48-L91"
+        quote: "assert breaker.state == CircuitState.OPEN / 'is OPEN' in str(exc_info.value)"
+      - source: "tests/unit/test_circuit_breaker.py#L95-L162"
+        quote: "test_open_to_half_open_after_timeout / test_half_open_to_closed_on_success (assert state HALF_OPEN -> CLOSED, failure_count == 0)"
+
+  - id: "INV-CACHE-002"
+    related_terms: ["CacheManager"]
+    status: "stable"
+    strength: "hard"
+    statement: "キャッシュキーは 'rag:' + 64文字ハッシュ(計68文字)の正規化形式で生成され、クエリパラメータから決定論的(同一パラメータ→同一キー、異なるパラメータ→異なるキー)である。"
+    rationale: "正規化キーによりキャッシュの一意性と再現性を保証するため。"
+    evidence:
+      - source: "tests/unit/test_cache.py#L109-L124"
+        quote: "assert key1.startswith('rag:') / assert len(key1) == 68 / assert key1 == key2 (consistency) / assert key1 != key2 (different params)"
+
+  - id: "INV-CACHE-003"
+    related_terms: ["CacheManager"]
+    status: "stable"
+    strength: "soft"
+    statement: "L2(Redis) 接続が失敗しても、L1(インメモリ)キャッシュは有効のまま維持される(manager.enabled は True)。"
+    rationale: "外部キャッシュ障害がクエリ経路全体を落とさないよう、ローカルキャッシュで縮退運用するため。"
+    evidence:
+      - source: "tests/unit/test_cache.py#L96"
+        quote: "assert manager.enabled is True  # L1 cache still active"
+
+  - id: "INV-CORE-002"
+    related_terms: ["VectorDB", "Tenant"]
+    status: "stable"
+    strength: "hard"
+    statement: "VectorDB は名前付きコレクション複数をサポートし、検索は指定コレクションにスコープされる(あるコレクションのベクトルは別コレクションの検索で返らない)。これによりテナント/データ単位の分離を実現する。存在しないコレクションの検索は空結果を返す。"
+    rationale: "コレクション単位の分離でテナント横断のデータ漏洩を防ぐため（INV-TENANT-001 の意図を永続層で担保）。"
+    evidence:
+      - source: "tests/unit/test_vectordb_collections.py#L92-L125"
+        quote: "test_vector_db_collection_isolation: hr_results と tech_results が互いに混入しない"
+      - source: "tests/unit/test_vectordb_collections.py#L147-L157"
+        quote: "test_vector_db_nonexistent_collection: assert results == []"
+
+  - id: "INV-RES-004"
+    related_terms: ["RateLimiter", "Settings"]
+    status: "stable"
+    strength: "hard"
+    statement: "レートリミット識別子は APIキー(key:<api_key>)を優先し、APIキー無しの場合はクライアントIP(ip:<ip>)にフォールバックする。レートリミットは既定で有効(rate_limit_enabled=True)。"
+    rationale: "認証済みユーザはキー単位、未認証はIP単位で制限を課し、不正利用とリソース枯渇を防ぐため。"
+    evidence:
+      - source: "tests/unit/test_rate_limit.py#L17-L33"
+        quote: "assert identifier == 'key:test_api_key_123' / assert identifier.startswith('ip:')"
+      - source: "tests/unit/test_rate_limit.py#L155-L159"
+        quote: "assert settings.rate_limit_enabled is True"

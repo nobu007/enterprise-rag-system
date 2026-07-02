@@ -1,0 +1,86 @@
+version: "1.0"
+
+product_goal:
+  north_star: >-
+    企業向けに、ハイブリッド検索（セマンティック＋キーワード）・再ランキング・コンテキスト圧縮・
+    LLM生成を統合した Retrieval-Augmented Generation (RAG) システムを、FastAPI 上で
+    ストリーミング・バッチ・マルチテナント・監視付きで提供する。（推定）
+  success_metrics:
+    - id: "MET-001"
+      name: "クエリエンドツーエンド応答性"
+      target: "RAG クエリが低レイテンシで応答を返すこと（ストリーミング/非ストリーミング両対応）"
+    - id: "MET-002"
+      name: "検索品質"
+      target: "ハイブリッド検索＋クロスエンコーダ再ランキングにより取得結果の関連性を向上"
+    - id: "MET-003"
+      name: "テスト安定性"
+      target: "pytest tests/ が全件パス（unit + integration）"
+    - id: "MET-004"
+      name: "観測可能性"
+      target: "Prometheus メトリクス・リクエストID追跡・構造化ログでクエリ経路を追跡可能"
+  non_goals:
+    - "自律エージェント／LLM によるコード自動生成・自己改修ハーネス（本リポジトリは RAG アプリ本体）"
+    - "モデルのファインチューニングや自前トレーニング"
+    - "UI 以外のフロントエンド実装（Streamlit デモにとどめる）"
+
+milestones:
+  - id: "MS-001"
+    name: "コア RAG パイプライン"
+    intent: "取得→再ランキング→コンテキスト圧縮→LLM生成 の一本道を安定させる"
+    deliverables:
+      - "RAGPipeline / StreamingRAGPipeline の統合"
+      - "HybridRetriever（セマンティック＋BM25）"
+      - "Reranker（クロスエンコーダ）と QueryResultRanker（特徴量ベース）"
+    acceptance:
+      - type: "test"
+        target: "tests/unit/test_rag_pipeline.py, tests/unit/test_retrieval.py, tests/unit/test_reranker.py"
+    priority: "P0"
+    status: "active"
+
+  - id: "MS-002"
+    name: "データ取り込みと検証"
+    intent: "ドキュメント取り込み前に品質・セキュリティを保証する"
+    deliverables:
+      - "DocumentLoader / EnhancedDocumentLoader / DocumentParser（表・チャート対応）"
+      - "DocumentValidator（内容品質・PII・インジェクション検査）"
+    acceptance:
+      - type: "test"
+        target: "tests/unit/test_document_loader.py, tests/unit/test_feature_46.py, tests/unit/test_validation_middleware.py"
+    priority: "P1"
+    status: "active"
+
+  - id: "MS-003"
+    name: "エンタープライズ基盤（信頼性・分離・安全性）"
+    intent: "マルチテナント・レートリミット・サーキットブレーカ・キャッシュ・暗号化で生産運用を支える"
+    deliverables:
+      - "Tenant / TenantManager とテナントミドルウェア分離"
+      - "CacheManager(L1/L2), ConcurrencyLimiter, CircuitBreaker, RateLimiter"
+      - "DocumentEncryption(AES-256-GCM), SecurityValidator"
+    acceptance:
+      - type: "test"
+        target: "tests/unit/test_cache.py, tests/unit/test_circuit_breaker.py, tests/unit/test_rate_limit.py, tests/unit/test_vectordb_collections.py"
+    priority: "P1"
+    status: "active"
+
+  - id: "MS-004"
+    name: "API・観測・ストリーミングの完成"
+    intent: "外部から安定して利用・観測できる IF を整える"
+    deliverables:
+      - "FastAPI ルート（query / ingest / documents / health）"
+      - "SSE ストリーミング応答（StreamingRAGService）"
+      - "Prometheus メトリクス・リクエストID伝播"
+    acceptance:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py, tests/unit/test_api_docs.py, tests/unit/test_metrics.py"
+      - type: "integration"
+        target: "tests/integration/test_rag_integration.py"
+    priority: "P2"
+    status: "planned"
+
+work_policy:
+  default_mode: "commit"
+  iteration_budget:
+    max_cycles: 5
+    max_files_changed: 25
+  quality_gates:
+    must_pass: ["pytest"]

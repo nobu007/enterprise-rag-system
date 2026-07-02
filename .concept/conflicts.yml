@@ -1,0 +1,4 @@
+conflicts: []
+# 現在、仕様（README/docs）とコード間に検出された矛盾は無し。
+# README に言及のある機能（Weaviate/Chroma バックエンド、Document Relationship Graph 等）の
+# 実装網羅度は後続サイクルで個別に検証し、矛盾があればここに記録する。

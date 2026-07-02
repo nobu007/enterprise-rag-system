@@ -1,0 +1,218 @@
+mappings:
+  RAGPipeline:
+    code_symbols:
+      - "app/services/rag_pipeline.py::class RAGPipeline"
+    db: []
+    api: ["POST /query"]
+
+  StreamingRAGPipeline:
+    code_symbols:
+      - "app/services/rag_pipeline.py::class StreamingRAGPipeline"
+    db: []
+    api: ["POST /query/stream"]
+
+  HybridRetriever:
+    code_symbols:
+      - "app/services/retrieval.py::class HybridRetriever"
+    db: []
+    api: []
+
+  VectorDB:
+    code_symbols:
+      - "app/core/vectordb.py::class VectorDB"
+      - "app/core/vectordb.py::class PineconeVectorDB"
+      - "app/core/vectordb.py::class FAISSVectorDB"
+    db: ["FAISS index file (settings.faiss_index_path)", "Pinecone index (settings.pinecone_index_name)"]
+    api: []
+
+  EmbeddingModel:
+    code_symbols:
+      - "app/core/embeddings.py::class EmbeddingModel"
+      - "app/core/embeddings.py::class OpenAIEmbeddings"
+      - "app/core/embeddings.py::class CohereEmbeddings"
+    db: []
+    api: []
+
+  RAGResponse:
+    code_symbols:
+      - "app/services/rag_pipeline.py::class RAGResponse"
+    db: []
+    api: ["GET /query response body"]
+
+  RetrievalResult:
+    code_symbols:
+      - "app/services/retrieval.py::class RetrievalResult"
+    db: []
+    api: []
+
+  SearchResult:
+    code_symbols:
+      - "app/core/vectordb.py::class SearchResult"
+    db: []
+    api: []
+
+  ContextCompressor:
+    code_symbols:
+      - "app/services/retrieval.py::class ContextCompressor"
+    db: []
+    api: []
+
+  Reranker:
+    code_symbols:
+      - "app/services/reranker.py::class Reranker"
+    db: []
+    api: []
+
+  QueryResultRanker:
+    code_symbols:
+      - "app/services/ranking.py::class QueryResultRanker"
+      - "app/services/ranking.py::function get_ranker"
+    db: []
+    api: ["POST /query?ranking=feature"]
+
+  DocumentValidator:
+    code_symbols:
+      - "app/services/validator.py::class DocumentValidator"
+      - "app/services/validator.py::class ValidationResult"
+      - "app/services/validator.py::class ValidationError"
+      - "app/services/validator.py::class ValidationSeverity"
+    db: []
+    api: []
+
+  DocumentParser:
+    code_symbols:
+      - "app/services/parser.py::class DocumentParser"
+      - "app/services/parser.py::class FormattingParser"
+      - "app/services/parser.py::class ParsedContent"
+      - "app/services/parser.py::class TableData"
+    db: []
+    api: []
+
+  DocumentLoader:
+    code_symbols:
+      - "app/services/document_loader.py::class DocumentLoader"
+      - "app/services/document_loader.py::class TextSplitter"
+    db: []
+    api: []
+
+  EnhancedDocumentLoader:
+    code_symbols:
+      - "app/services/document_loader_enhanced.py::class EnhancedDocumentLoader"
+    db: []
+    api: []
+
+  Document:
+    code_symbols:
+      - "app/services/document_loader.py::class Document"
+    db: []
+    api: []
+
+  QueryRequest:
+    code_symbols:
+      - "app/models/schemas.py::class QueryRequest"
+      - "app/api/routes/query.py::class QueryRequest"
+    db: []
+    api: ["POST /query", "POST /query/stream (StreamingQueryRequest)", "POST /query/batch (BatchQueryRequest)"]
+
+  QueryResponse:
+    code_symbols:
+      - "app/models/schemas.py::class QueryResponse"
+      - "app/api/routes/query.py::class QueryResponse"
+      - "app/models/schemas.py::class Source"
+    db: []
+    api: ["GET /query response"]
+
+  IngestRequest:
+    code_symbols:
+      - "app/models/schemas.py::class IngestRequest"
+      - "app/models/schemas.py::class IngestResponse"
+    db: []
+    api: ["POST /ingest"]
+
+  ErrorResponse:
+    code_symbols:
+      - "app/models/schemas.py::class ErrorResponse"
+      - "app/models/schemas.py::class ErrorDetail"
+    db: []
+    api: ["422 validation error", "429 rate-limit error"]
+
+  Tenant:
+    code_symbols:
+      - "app/core/tenant.py::class Tenant"
+      - "app/core/tenant.py::class TenantStatus"
+      - "app/core/tenant.py::class TenantContext"
+      - "app/middleware/tenant.py::class TenantMiddleware"
+    db: []
+    api: []
+
+  TenantManager:
+    code_symbols:
+      - "app/core/tenant.py::class TenantManager"
+      - "app/core/tenant.py::class TenantIsolationError"
+    db: []
+    api: []
+
+  StreamingRAGService:
+    code_symbols:
+      - "app/services/streaming.py::class StreamingRAGService"
+      - "app/services/streaming.py::class StreamingChunk"
+    db: []
+    api: ["POST /query/stream (SSE)"]
+
+  Settings:
+    code_symbols:
+      - "app/core/config.py::class Settings"
+      - "app/core/config.py::function get_settings"
+    db: []
+    api: []
+
+  CacheManager:
+    code_symbols:
+      - "app/core/cache.py::class CacheManager"
+    db: ["Redis (settings.redis_host/port/db)"]
+    api: ["GET /health/cache"]
+
+  ConcurrencyLimiter:
+    code_symbols:
+      - "app/core/concurrency.py::class ConcurrencyLimiter"
+      - "app/core/concurrency.py::class ConcurrencyStats"
+      - "app/core/concurrency.py::class ConcurrencyLimitExceeded"
+    db: []
+    api: []
+
+  CircuitBreaker:
+    code_symbols:
+      - "app/core/circuit_breaker.py::class CircuitBreaker"
+      - "app/core/circuit_breaker.py::class CircuitState"
+      - "app/core/circuit_breaker.py::class CircuitBreakerConfig"
+      - "app/core/circuit_breaker.py::class CircuitBreakerError"
+    db: []
+    api: []
+
+  DatabasePool:
+    code_symbols:
+      - "app/core/database.py::class DatabasePool"
+    db: ["PostgreSQL (settings.postgres_*)"]
+    api: []
+
+  DocumentEncryption:
+    code_symbols:
+      - "app/core/encryption.py::class DocumentEncryption"
+      - "app/core/encryption.py::class EncryptionResult"
+      - "app/core/encryption.py::class EncryptionError"
+    db: []
+    api: []
+
+  SecurityValidator:
+    code_symbols:
+      - "app/core/security.py::class SecurityValidator"
+    db: []
+    api: []
+
+  RateLimiter:
+    code_symbols:
+      - "app/core/rate_limit.py::function get_user_id"
+      - "app/core/rate_limit.py::function get_client_ip"
+      - "app/core/rate_limit.py::module limiter (slowapi)"
+    db: []
+    api: []

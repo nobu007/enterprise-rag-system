@@ -1,0 +1,342 @@
+version: "0.3"
+
+# 3層:
+#   core   = RAG の中枢（パイプライン・取得・抽象インターフェース・結果データクラス）
+#   domain = 業務ロジックと API 契約（再ランキング・検証・パース・スキーマ・テナント）
+#   aux    = インフラ・横断関心事（設定・キャッシュ・同時実行・回復性・永続化・暗号）
+# bootstrap 生成のため、コード走査に基づく seed を stable で直接登録している
+# （セクション6.4「初回生成後に Discover で ontology を充実させる」に従う）。
+# 以後の新語は term_queue.yml 経由が必須（Rule 1）。
+
+canonical_terms:
+  # ----------------------------- core -----------------------------
+  RAGPipeline:
+    id: "TERM-CORE-001"
+    layer: "core"
+    status: "stable"
+    definition: "RAG ワークフロー全体を指揮するクラス。取得→(再ランキング)→コンテキスト圧縮→LLM 生成をつなぎ、LLM 呼び出しは CircuitBreaker で保護し、任意で CacheManager を経由する。"
+    synonyms: []
+    boundaries:
+      includes: ["クエリ→回答の主経路", "LLM 呼び出しとプロンプト構築", "キャッシュの参照/格納"]
+      excludes: ["HTTP ルーティング", "ベクトルDB の物理実装"]
+    related_terms: ["HybridRetriever", "Reranker", "ContextCompressor", "CircuitBreaker", "CacheManager", "RAGResponse"]
+    evidence:
+      - source: "app/services/rag_pipeline.py#L39-L75"
+        quote: "class RAGPipeline: \"\"\"Complete RAG pipeline orchestration\"\"\""
+
+  StreamingRAGPipeline:
+    id: "TERM-CORE-002"
+    layer: "core"
+    status: "stable"
+    definition: "RAGPipeline のストリーミング版。回答をチャンク単位で段階的に生成・送出する。"
+    related_terms: ["RAGPipeline", "StreamingRAGService"]
+    evidence:
+      - source: "app/services/rag_pipeline.py#L353"
+        quote: "class StreamingRAGPipeline"
+
+  HybridRetriever:
+    id: "TERM-CORE-003"
+    layer: "core"
+    status: "stable"
+    definition: "セマンティック検索とキーワード(BM25)検索を重み alpha で統合するハイブリッド取得器。alpha=0 でキーワードのみ、alpha=1 でセマンティックのみ。"
+    boundaries:
+      includes: ["BM25 インデックス構築", "VectorDB と EmbeddingModel の協調"]
+      excludes: ["再ランキング（Reranker の責務）"]
+    lifecycle: ["BM25 未構築", "BM25 構築済み"]
+    related_terms: ["VectorDB", "EmbeddingModel", "RetrievalResult", "ContextCompressor", "Document"]
+    evidence:
+      - source: "app/services/retrieval.py#L27-L47"
+        quote: "class HybridRetriever: \"\"\"Hybrid retrieval using semantic + keyword search\"\"\" ... alpha: Weight for semantic vs keyword search (0=keyword only, 1=semantic only)"
+
+  VectorDB:
+    id: "TERM-CORE-004"
+    layer: "core"
+    status: "stable"
+    definition: "ベクトルDB 操作の抽象基底クラス（ABC）。connect/create_index/upsert/search/delete/get_stats を契約とし、Pinecone・FAISS 等が実装する。"
+    synonyms: ["ベクトルデータベース"]
+    boundaries:
+      includes: ["ベクトルの挿入・検索・削除の抽象IF"]
+      excludes: ["具体的なバックエンド実装の詳細"]
+    related_terms: ["PineconeVectorDB", "FAISSVectorDB", "SearchResult", "EmbeddingModel"]
+    evidence:
+      - source: "app/core/vectordb.py#L30-L71"
+        quote: "class VectorDB(ABC): \"\"\"Abstract base class for vector database operations\"\"\""
+
+  EmbeddingModel:
+    id: "TERM-CORE-005"
+    layer: "core"
+    status: "stable"
+    definition: "埋め込みモデルの抽象基底クラス（ABC）。OpenAIEmbeddings / CohereEmbeddings 等が実装する。"
+    related_terms: ["OpenAIEmbeddings", "CohereEmbeddings", "HybridRetriever"]
+    evidence:
+      - source: "app/core/embeddings.py#L19-L20"
+        quote: "class EmbeddingModel(ABC): \"\"\"Abstract base class for embedding models\"\"\""
+
+  RAGResponse:
+    id: "TERM-CORE-006"
+    layer: "core"
+    status: "stable"
+    definition: "RAG システムの応答データクラス。answer/sources/confidence/latency_ms/tokens_used/retrieval_results を持つ。"
+    related_terms: ["RAGPipeline", "RetrievalResult"]
+    evidence:
+      - source: "app/services/rag_pipeline.py#L28-L36"
+        quote: "class RAGResponse: \"\"\"Response from RAG system\"\"\""
+
+  RetrievalResult:
+    id: "TERM-CORE-007"
+    layer: "core"
+    status: "stable"
+    definition: "取得結果のデータクラス。document/score/metadata/source を持つ。"
+    related_terms: ["HybridRetriever", "RAGResponse"]
+    evidence:
+      - source: "app/services/retrieval.py#L18-L24"
+        quote: "class RetrievalResult: \"\"\"Result from retrieval system\"\"\""
+
+  SearchResult:
+    id: "TERM-CORE-008"
+    layer: "core"
+    status: "stable"
+    definition: "ベクトルDB 検索結果のデータクラス。id/score/metadata/text を持つ。"
+    related_terms: ["VectorDB"]
+    evidence:
+      - source: "app/core/vectordb.py#L21-L27"
+        quote: "class SearchResult: \"\"\"Search result from vector database\"\"\""
+
+  ContextCompressor:
+    id: "TERM-CORE-009"
+    layer: "core"
+    status: "stable"
+    definition: "取得したコンテキストをトークン予算（既定4000）に収まるよう圧縮する。RAGPipeline が内部で保持する。"
+    related_terms: ["RAGPipeline", "HybridRetriever"]
+    evidence:
+      - source: "app/services/retrieval.py#L207"
+        quote: "class ContextCompressor"
+      - source: "app/services/rag_pipeline.py#L58"
+        quote: "self.compressor = ContextCompressor(max_tokens=4000)"
+
+  # ---------------------------- domain ----------------------------
+  Reranker:
+    id: "TERM-DOM-001"
+    layer: "domain"
+    status: "stable"
+    definition: "クロスエンコーダ（sentence-transformers）で取得文書をクエリとの関連度で再ランキングし、精度を向上させる。"
+    boundaries:
+      includes: ["取得後の再ソート"]
+      excludes: ["取得自体（HybridRetriever の責務）"]
+    related_terms: ["HybridRetriever", "QueryResultRanker", "RAGPipeline"]
+    evidence:
+      - source: "app/services/reranker.py#L15-L20"
+        quote: "class Reranker: \"\"\"Cross-encoder based reranker for improving retrieval accuracy.\"\"\""
+
+  QueryResultRanker:
+    id: "TERM-DOM-002"
+    layer: "domain"
+    status: "stable"
+    definition: "特徴量ベースのランキングサービス。semantic/keyword/freshness/popularity の重み付けで取得文書をスコアリング・再整列する。重みは合計1.0。"
+    related_terms: ["Reranker", "RetrievalResult"]
+    evidence:
+      - source: "app/services/ranking.py#L21-L27"
+        quote: "class QueryResultRanker: \"\"\"Feature-based ranking service for optimizing query result ordering.\"\"\""
+
+  DocumentValidator:
+    id: "TERM-DOM-003"
+    layer: "domain"
+    status: "stable"
+    definition: "取り込み前の包括的ドキュメント検証。内容品質・PII検出・セキュリティ（XSS/SQLi/パストラバーサル）・フォーマット別検査を行い ValidationResult を返す。"
+    related_terms: ["ValidationResult", "ValidationError", "SecurityValidator", "Document"]
+    evidence:
+      - source: "app/services/validator.py#L92-L95"
+        quote: "class DocumentValidator: \"\"\"Comprehensive document validator for RAG ingestion pipeline.\"\"\""
+
+  DocumentParser:
+    id: "TERM-DOM-004"
+    layer: "domain"
+    status: "stable"
+    definition: "表やチャート参照の抽出・整形保持を行う拡張ドキュメントパーサ。"
+    related_terms: ["ParsedContent", "TableData", "FormattingParser"]
+    evidence:
+      - source: "app/services/parser.py#L129-L134"
+        quote: "class DocumentParser: \"\"\"Enhanced document parser with table and chart support.\"\"\""
+
+  DocumentLoader:
+    id: "TERM-DOM-005"
+    layer: "domain"
+    status: "stable"
+    definition: "ドキュメントローダの基底クラス。各種フォーマットから Document を生成し、TextSplitter で分割する。"
+    related_terms: ["Document", "TextSplitter", "EnhancedDocumentLoader"]
+    evidence:
+      - source: "app/services/document_loader.py#L92-L93"
+        quote: "class DocumentLoader: \"\"\"Base class for document loaders\"\"\""
+
+  EnhancedDocumentLoader:
+    id: "TERM-DOM-006"
+    layer: "domain"
+    status: "stable"
+    definition: "高度なパース機能を統合したドキュメントローダ。DocumentParser と協調する。"
+    related_terms: ["DocumentLoader", "DocumentParser"]
+    evidence:
+      - source: "app/services/document_loader_enhanced.py#L24"
+        quote: "class EnhancedDocumentLoader: \"\"\"Enhanced document loader with parsing capabilities\"\"\""
+
+  Document:
+    id: "TERM-DOM-007"
+    layer: "domain"
+    status: "stable"
+    definition: "ドキュメント表現。内容(content)・メタデータ・ソース等を保持し、取得・検証・パース対象となる。"
+    related_terms: ["DocumentLoader", "HybridRetriever", "DocumentValidator"]
+    evidence:
+      - source: "app/services/document_loader.py#L20-L21"
+        quote: "class Document: \"\"\"Document representation\"\"\""
+
+  QueryRequest:
+    id: "TERM-DOM-008"
+    layer: "domain"
+    status: "stable"
+    definition: "クエリ要求の Pydantic スキーマ。/query エンドポイント群のリクエスト契約。"
+    related_terms: ["QueryResponse", "ErrorResponse"]
+    evidence:
+      - source: "app/models/schemas.py#L58-L59"
+        quote: "class QueryRequest(BaseModel): \"\"\"Query request schema / クエリリクエスト\"\"\""
+
+  QueryResponse:
+    id: "TERM-DOM-009"
+    layer: "domain"
+    status: "stable"
+    definition: "クエリ応答の Pydantic スキーマ。"
+    related_terms: ["QueryRequest", "Source"]
+    evidence:
+      - source: "app/models/schemas.py#L109"
+        quote: "class QueryResponse"
+
+  IngestRequest:
+    id: "TERM-DOM-010"
+    layer: "domain"
+    status: "stable"
+    definition: "ドキュメント取り込み要求の Pydantic スキーマ。/ingest エンドポイントの契約。"
+    related_terms: ["IngestResponse", "Document"]
+    evidence:
+      - source: "app/models/schemas.py#L120"
+        quote: "class IngestRequest"
+
+  ErrorResponse:
+    id: "TERM-DOM-011"
+    layer: "domain"
+    status: "stable"
+    definition: "標準エラーレスポンススキーマ。error/message/details を持つ。検証エラー(422)やレートリミット(429)で返却。"
+    related_terms: ["ErrorDetail", "QueryRequest"]
+    evidence:
+      - source: "app/models/schemas.py#L28-L29"
+        quote: "class ErrorResponse: \"\"\"Standard error response schema / 標準エラーレスポンス\"\"\""
+
+  Tenant:
+    id: "TERM-DOM-012"
+    layer: "domain"
+    status: "stable"
+    definition: "組織/顧客を表すテナントモデル。tenant_id は英数字・ハイフン・アンダースコアのみ。TenantManager が管理する。"
+    lifecycle: ["pending", "active", "suspended", "archived"]
+    related_terms: ["TenantManager", "TenantStatus", "TenantContext"]
+    evidence:
+      - source: "app/core/tenant.py#L24-L55"
+        quote: "class Tenant(BaseModel): \"\"\"Tenant model representing an organization/customer\"\"\" ... tenant_id can only contain alphanumeric characters, hyphens, and underscores"
+
+  TenantManager:
+    id: "TERM-DOM-013"
+    layer: "domain"
+    status: "stable"
+    definition: "テナント操作マネージャ。CRUD・検証・APIキー対応・分離強制を担う（現在はメモリ内ストレージ）。"
+    related_terms: ["Tenant", "TenantContext", "TenantIsolationError"]
+    evidence:
+      - source: "app/core/tenant.py#L133-L137"
+        quote: "class TenantManager: \"\"\"Manager class for tenant operations ... validation, and isolation enforcement.\"\"\""
+
+  StreamingRAGService:
+    id: "TERM-DOM-014"
+    layer: "domain"
+    status: "stable"
+    definition: "ストリーミング RAG 応答サービス。LLM 応答をチャンク（StreamingChunk）単位で生成する非同期ジェネレータを提供する。"
+    related_terms: ["StreamingRAGPipeline", "StreamingChunk", "RAGPipeline"]
+    evidence:
+      - source: "app/services/streaming.py#L48-L55"
+        quote: "class StreamingRAGService: \"\"\"Service for handling streaming RAG responses.\"\"\""
+
+  # ----------------------------- aux ------------------------------
+  Settings:
+    id: "TERM-AUX-001"
+    layer: "aux"
+    status: "stable"
+    definition: "Pydantic BaseSettings によるアプリ設定。全設定を環境変数から取得し（シークレットのハードコード禁止）、APIキー・検索・キャッシュ・DB・レートリミット等を一元管理する。"
+    related_terms: ["CacheManager", "DatabasePool", "ConcurrencyLimiter"]
+    evidence:
+      - source: "app/core/config.py#L13-L14"
+        quote: "class Settings(BaseSettings): \"\"\"Application settings with environment variable support\"\"\""
+
+  CacheManager:
+    id: "TERM-AUX-002"
+    layer: "aux"
+    status: "stable"
+    definition: "階層型キャッシュマネージャ。L1(インメモリ・高速・サイズ制限)と L2(Redis・共有・永続)を組み合わせ、正規化キー生成とバージョンベース無効化を行う。"
+    related_terms: ["Settings", "RAGPipeline"]
+    evidence:
+      - source: "app/core/cache.py#L27-L35"
+        quote: "class CacheManager: ... \"\"\"Manages hierarchical caching for RAG query responses. ... L1: In-memory cache ... L2: Redis cache\"\"\""
+
+  ConcurrencyLimiter:
+    id: "TERM-AUX-003"
+    layer: "aux"
+    status: "stable"
+    definition: "asyncio.Semaphore による同時実行制限器。同時要求数を上限（既定10）に抑え、リソース枯渇を防ぐ。統計（ConcurrencyStats）を追跡する。"
+    related_terms: ["ConcurrencyStats", "ConcurrencyLimitExceeded", "Settings"]
+    evidence:
+      - source: "app/core/concurrency.py#L41-L54"
+        quote: "class ConcurrencyLimiter: \"\"\"Semaphore-based concurrency limiter ... prevent resource exhaustion.\"\"\""
+
+  CircuitBreaker:
+    id: "TERM-AUX-004"
+    layer: "aux"
+    status: "stable"
+    definition: "外部サービス呼び出し（LLM API 等）用のサーキットブレーカ。連続失敗で OPEN→遮断し、一定時間後に HALF_OPEN で試行、成功で CLOSED に戻る。RAGPipeline が LLM 呼び出しを保護するために使用。"
+    lifecycle: ["CLOSED", "OPEN", "HALF_OPEN"]
+    related_terms: ["CircuitState", "CircuitBreakerConfig", "CircuitBreakerError", "RAGPipeline"]
+    evidence:
+      - source: "app/core/circuit_breaker.py#L49-L57"
+        quote: "class CircuitBreaker: \"\"\"Circuit breaker implementation for external service calls.\"\"\""
+
+  DatabasePool:
+    id: "TERM-AUX-005"
+    layer: "aux"
+    status: "stable"
+    definition: "asyncpg による PostgreSQL コネクションプールマネージャ。プールサイズ設定・接続の取得/解放・ヘルス監視・グレースフルシャットダウンを行う。"
+    related_terms: ["Settings"]
+    evidence:
+      - source: "app/core/database.py#L21-L29"
+        quote: "class DatabasePool: \"\"\"Manages PostgreSQL connection pool using asyncpg.\"\"\""
+
+  DocumentEncryption:
+    id: "TERM-AUX-006"
+    layer: "aux"
+    status: "stable"
+    definition: "AES-256-GCM によるドキュメント暗号化/復号。各操作で一意の nonce と salt を使用する。EncryptionResult を返す。"
+    related_terms: ["EncryptionResult", "EncryptionError", "KeyDerivationError", "DecryptionError"]
+    evidence:
+      - source: "app/core/encryption.py#L67-L74"
+        quote: "class DocumentEncryption: \"\"\"Document encryption and decryption using AES-256-GCM.\"\"\""
+
+  SecurityValidator:
+    id: "TERM-AUX-007"
+    layer: "aux"
+    status: "stable"
+    definition: "悪意ある入力パターンを検出するバリデータ。SQL インジェクション・XSS・パストラバーサル等を静的メソッドで検知する。"
+    related_terms: ["DocumentValidator", "Settings"]
+    evidence:
+      - source: "app/core/security.py#L15-L20"
+        quote: "class SecurityValidator: \"\"\"Security validator for detecting malicious input patterns.\"\"\""
+
+  RateLimiter:
+    id: "TERM-AUX-008"
+    layer: "aux"
+    status: "stable"
+    definition: "slowapi ベースのレートリミッタ。ユーザID/クライアントIP（get_user_id / get_client_ip）で分・時間・バースト制限を適用する。"
+    related_terms: ["Settings", "ConcurrencyLimiter"]
+    evidence:
+      - source: "app/core/rate_limit.py#L14-L26"
+        quote: "def get_user_id(request: Request) -> str: ... def get_client_ip(request: Request) -> str:"

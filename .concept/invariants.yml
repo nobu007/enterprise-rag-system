@@ -1,0 +1,163 @@
+invariants:
+  - id: "INV-RANK-001"
+    related_terms: ["QueryResultRanker"]
+    status: "stable"
+    strength: "hard"
+    statement: "QueryResultRanker のランキング重み（semantic/keyword/freshness/popularity）の和は 1.0 になる（許容誤差 ±0.01）。"
+    rationale: "重み付け合計が1でなければスコアが正規化されず、結果の相対的意義が崩れるため。"
+    evidence:
+      - source: "tests/unit/test_feature_36.py#L121"
+        quote: "assert 0.99 <= total <= 1.01"
+
+  - id: "INV-RANK-002"
+    related_terms: ["QueryResultRanker"]
+    status: "stable"
+    strength: "hard"
+    statement: "特徴量スコア（semantic_score/freshness 等）と最終スコアはすべて [0.0, 1.0] に正規化される。"
+    rationale: "異種特徴量を統合可能にし、スコアの大小比較を意味あるものにするため。"
+    evidence:
+      - source: "tests/unit/test_feature_36.py#L153"
+        quote: "assert 0.0 <= features['semantic_score'] <= 1.0"
+      - source: "tests/unit/test_feature_36.py#L214"
+        quote: "assert 0.0 <= score <= 1.0"
+
+  - id: "INV-RET-001"
+    related_terms: ["HybridRetriever"]
+    status: "stable"
+    strength: "hard"
+    statement: "HybridRetriever のハイブリッド重み alpha は [0,1] の実数で、0=キーワードのみ・1=セマンティックのみを意味する。既定は 0.5。"
+    rationale: "二つの検索モードのブレンド比率を一貫して解釈するため。"
+    evidence:
+      - source: "tests/unit/test_retrieval.py#L83-L84"
+        quote: "assert retriever.alpha == 0.5 / assert retriever.bm25_index is None"
+      - source: "app/services/retrieval.py#L42-L43"
+        quote: "alpha: Weight for semantic vs keyword search (0=keyword only, 1=semantic only)"
+
+  - id: "INV-TENANT-001"
+    related_terms: ["Tenant", "TenantManager"]
+    status: "stable"
+    strength: "hard"
+    statement: "tenant_id は英数字・ハイフン・アンダースコアのみ（空不可）。テナント間のデータ分離が強制される。"
+    rationale: "テナント識別子の安全性と、テナント横断のデータ漏洩を防ぐため。"
+    evidence:
+      - source: "app/core/tenant.py#L46-L55"
+        quote: "if not all(c.isalnum() or c in ('-', '_') for c in v): raise ValueError(...)"
+      - source: "tests/unit/test_feature_34.py"
+
+  - id: "INV-SEC-001"
+    related_terms: ["Settings", "SecurityValidator"]
+    status: "stable"
+    strength: "hard"
+    statement: "シークレット/APIキーは環境変数経由で供給し、コードにハードコードしない（openai_api_key は必須、他は任意）。"
+    rationale: "認証情報の漏洩を防ぐため。"
+    evidence:
+      - source: "app/core/config.py#L17-L19"
+        quote: "openai_api_key: str = Field(..., env=\"OPENAI_API_KEY\")"
+
+  - id: "INV-SEC-002"
+    related_terms: ["Settings"]
+    status: "stable"
+    strength: "hard"
+    statement: "CORS は許可オリジン(allowed_origins)・許可ヘッダ(allowed_headers)を制限し、リクエストサイズは max_request_size(既定10MB)で制限する。"
+    rationale: "公開 IF としての攻撃面を最小化するため。"
+    evidence:
+      - source: "app/core/config.py#L31-L34"
+        quote: "allowed_origins: str = Field(\"http://localhost:8000,http://localhost:3000\", ...)"
+      - source: "app/core/config.py#L87"
+        quote: "max_request_size: int = Field(10 * 1024 * 1024, ...)"
+
+  - id: "INV-RES-001"
+    related_terms: ["CircuitBreaker", "RAGPipeline"]
+    status: "stable"
+    strength: "soft"
+    statement: "RAGPipeline は LLM API 呼び出しを CircuitBreaker で保護する（既定で有効、無効化も可能）。"
+    rationale: "外部 LLM API の障害がクエリ経路全体を引きずらないよう、速やかに失敗させるため。"
+    evidence:
+      - source: "app/services/rag_pipeline.py#L62-L73"
+        quote: "self.llm_circuit_breaker = CircuitBreaker(name=\"llm_api\", ...)"
+      - source: "app/core/circuit_breaker.py#L49-L57"
+
+  - id: "INV-VAL-001"
+    related_terms: ["DocumentValidator", "ErrorResponse"]
+    status: "stable"
+    strength: "hard"
+    statement: "不正なリクエストは HTTP 422（検証エラー）で拒否され、標準 ErrorResponse で返却される。"
+    rationale: "入力契約を入口で守り、下流へ不正データを流さないため。"
+    evidence:
+      - source: "tests/unit/test_validation_middleware.py#L297"
+        quote: "assert response.status_code == 422  # Validation error"
+      - source: "app/models/schemas.py#L28-L29"
+
+  - id: "INV-OBS-001"
+    related_terms: ["Settings", "CacheManager"]
+    status: "stable"
+    strength: "soft"
+    statement: "観測性指標（cache_hits/cache_misses 等）が Prometheus メトリクスとして公開される（enable_metrics 既定 True）。"
+    rationale: "クエリ経路の性能・効率を観測・改善可能にするため。"
+    evidence:
+      - source: "tests/unit/test_metrics.py#L40-L41"
+        quote: "assert 'cache_hits' in metric_names / assert 'cache_misses' in metric_names"
+
+  - id: "INV-IF-001"
+    related_terms: ["QueryRequest", "IngestRequest", "ErrorResponse"]
+    status: "stable"
+    strength: "hard"
+    statement: "外部 API（/query, /ingest, /documents, /health）は Pydantic スキーマで入出力を型検証し、検証失敗時は標準エラーで応答する。"
+    rationale: "API 契約を型で保証し、呼び出し側の一貫性を保つため。"
+    evidence:
+      - source: "tests/unit/test_api_routes.py#L82-L108"
+        quote: "assert query_path is not None ... assert ingest_path is not None"
+
+  - id: "INV-CORE-001"
+    related_terms: ["VectorDB", "EmbeddingModel"]
+    status: "stable"
+    strength: "hard"
+    statement: "VectorDB / EmbeddingModel は抽象基底クラス(ABC)であり、全バックエンドは connect/create_index/upsert/search/delete/get_stats の契約を実装しなければならない。"
+    rationale: "バックエンド(Pinecone/FAISS 等)を差し替え可能にする依存の逆転のため。"
+    evidence:
+      - source: "app/core/vectordb.py#L30-L71"
+        quote: "class VectorDB(ABC): ... @abstractmethod def connect/create_index/upsert/search/delete/get_stats"
+
+  - id: "INV-ENC-001"
+    related_terms: ["DocumentEncryption"]
+    status: "stable"
+    strength: "hard"
+    statement: "DocumentEncryption(AES-256-GCM) は暗号化ごとに一意の nonce と salt を生成し、再利用しない。"
+    rationale: "nonce 再利用は GCM の機密性を破る致命的欠陥であるため。"
+    evidence:
+      - source: "app/core/encryption.py#L72-L74"
+        quote: "Each encryption operation uses a unique nonce and salt for security."
+
+  - id: "INV-CACHE-001"
+    related_terms: ["CacheManager", "Settings"]
+    status: "stable"
+    strength: "soft"
+    statement: "キャッシュは既定で有効(enable_caching/cache_enabled=True)。L1(インメモリ)＋L2(Redis)の階層構造で、TTL(cache_ttl_seconds 既定3600s)は設定可能。"
+    rationale: "繰り返しクエリのレイテンシと LLM コストを下げるため。"
+    evidence:
+      - source: "app/core/cache.py#L29-L35"
+        quote: "L1: In-memory cache (fast, limited size) / L2: Redis cache (shared, persistent)"
+      - source: "app/core/config.py#L61-L62"
+        quote: "enable_caching: bool = Field(True, ...) / cache_ttl_seconds: int = Field(3600, ...)"
+
+  - id: "INV-RES-002"
+    related_terms: ["ConcurrencyLimiter", "Settings"]
+    status: "stable"
+    strength: "soft"
+    statement: "同時実行は asyncio.Semaphore で上限(max_concurrent_requests 既定10)に抑えられ、超過時は ConcurrencyLimitExceeded を送出する。"
+    rationale: "リソース枯渇とカスケード障害を防ぐため。"
+    evidence:
+      - source: "app/core/concurrency.py#L264-L266"
+        quote: "class ConcurrencyLimitExceeded(Exception): \"\"\"Exception raised when concurrency limit would be exceeded.\"\"\""
+      - source: "app/core/config.py#L96"
+        quote: "max_concurrent_requests: int = Field(10, ...)"
+
+  - id: "INV-OBS-002"
+    related_terms: ["RequestIDMiddleware", "Settings"]
+    status: "stable"
+    strength: "hard"
+    statement: "リクエストIDは X-Request-ID ヘッダから取得し、無ければ生成(uuid4)して request.state に設定し、応答ヘッダにエコーバックする。"
+    rationale: "クエリ経路を横断的に追跡可能にするため。"
+    evidence:
+      - source: "app/middleware/request_id.py#L6-L33"
+        quote: "Generates or retrieves a request ID from the X-Request-ID header ... request_id = request.headers.get(\"X-Request-ID\", str(uuid.uuid4()))"

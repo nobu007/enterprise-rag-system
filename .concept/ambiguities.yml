@@ -1,0 +1,20 @@
+ambiguities:
+  - id: "AMB-001"
+    related_terms: ["Reranker", "QueryResultRanker"]
+    status: "open"
+    statement: "Reranker（クロスエンコーダ）と QueryResultRanker（特徴量ベース）の使い分け基準が明文化されていない。デフォルトは re-ranking 有効、特徴量ランキングは RANKING_ENABLED=False 既定で無効。"
+    auto_decision: "両者は直交する概念として共存（Reranker=取得後精度向上、QueryResultRanker=複数特徴量の重み付け整列）。統合せず残置。"
+    confidence: 0.6
+    evidence:
+      - source: "app/core/config.py#L43-L53"
+        quote: "reranker_model: ... / ranking_enabled: bool = Field(False, ...)"
+
+  - id: "AMB-002"
+    related_terms: ["TenantManager"]
+    status: "open"
+    statement: "TenantManager は現在メモリ内ストレージ（本番では DB を想定）。永続化のタイミングが未確定。"
+    auto_decision: "本ファイルは概念整備が目的のため、実装の永続化判断は保留。invariants にはテナント分離の『意図』のみ記録。"
+    confidence: 0.5
+    evidence:
+      - source: "app/core/tenant.py#L138-L142"
+        quote: "# In production, this would use a database / self._tenants: Dict[str, Tenant] = {}"

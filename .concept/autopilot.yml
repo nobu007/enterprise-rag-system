@@ -1,0 +1,17 @@
+version: "1.0"
+
+# CI (.github/workflows/test.yml) で実証済みのコマンドを正とする。
+commands:
+  lint: "flake8 app tests"
+  test: "pytest tests/ -v --cov=app"
+
+budget:
+  max_cycles: 5
+  max_files: 25
+
+mode: "commit"  # pr | commit | dry_run
+
+notes:
+  - "lint: requirements.txt に flake8==7.0.0 を明示。pyproject.toml / setup.cfg / .flake8 は未配置のためデフォルト設定で動作。"
+  - "test: CI の正コマンド pytest tests/ -v --cov=app を採用（pytest.ini の asyncio_mode=auto を使用）。"
+  - "リポジトリルートに pyproject.toml は存在しない（セクション6.3の ruff 分岐には該当しない）。"

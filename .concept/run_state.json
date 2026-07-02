@@ -1,0 +1,7 @@
+{
+  "run_index": 0,
+  "last_run_id": "concept-bootstrap-20260702",
+  "phase": "initial_generation",
+  "boot_decision": "Q1=NO -> first-time generation (section 6)",
+  "created_at_note": "bootstrap; timestamp injected post-workflow per spec (no Date.now in scripts)"
+}

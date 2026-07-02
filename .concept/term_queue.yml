@@ -1,0 +1,4 @@
+# 新語の入国審査キュー。ontology.yml への直入れは禁止（Rule 1）。
+# 以後のサイクルで発見された新概念はここに蓄積し、安定したら canonical_terms へ昇格する。
+# bootstrap 生成では直接 seed したため、現在キューは空。
+queue: []

@@ -1,0 +1,9 @@
+# 用語数上限とライフサイクル（TTL）。
+# Q6 基準: ontology terms 数 ≤ 80。現在 31 terms（余裕あり）。
+terms_max: 80
+draft_ratio_max: 0.30
+unmapped_ratio_max: 0.20
+# draft 状態のまま放置される用語の TTL（サイクル数）。超過時は統合/削除候補。
+draft_ttl_cycles: 3
+# tombstones への移行: 一定期間再参照されない低重要度用語の候補選定に使用。
+gc_stale_cycles: 6

@@ -9,7 +9,7 @@
   "invariants": 20,
   "mappings": 31,
   "ambiguities": 3,
-  "conflicts": 5,
+  "conflicts": 6,
   "term_queue_pending": 0,
   "test_files": 24,
   "test_files_note": "strict test_*.py/*_test.py count under tests/ (excludes __init__.py x3 and conftest.py x1). Prior cycles reported 28 (all .py incl. non-test); methodology corrected in cycle 5.",
@@ -65,6 +65,14 @@
     "boot_decision": "Q1..Q4 all pass -> maintenance; pivoted to the one dimensions prior cycles recorded but never line-verified: Q2 mappings code_symbol resolution, plus charter milestone-status accuracy",
     "delta": "charter.yml: MS-004 status planned->active. Verified all 3 MS-004 deliverables are implemented AND have acceptance tests (SSE streaming: query.py#L279-L304 StreamingRAGService, tested test_feature_16.py; Prometheus /metrics: main.py#L186 prometheus_fastapi_instrumentator + core/metrics.py, tested test_metrics.py; FastAPI routes query/ingest/health registered main.py#L246-L248, tested test_api_routes.py/test_api_docs.py). 'planned' understated reality; 'active' matches MS-001/002/003. Not promoted to 'done' because acceptance tests cannot be executed here (test env unprovisioned: fastapi/prometheus_client missing at collection). Q2 independently line-verified: all 63 mappings code_symbols resolve to a real file path AND a declared class/def/assignment (0 file-missing, 0 symbol-missing) -> confirms Q2=100%. Charter deliverables line still lists /documents route (dead code per CFLT-DOCS-001); left untouched to keep delta minimal — registration nuance already captured in conflicts.",
     "q2_code_symbol_resolution_verified": "63/63 code_symbols resolve (file exists + class/def/assignment declared); 0 file-missing, 0 symbol-missing",
+    "code_changed_since_bootstrap": false,
+    "quality_gate_all_pass": true
+  },
+  "cycle7_maintenance": {
+    "phase": "maintenance",
+    "boot_decision": "Q1..Q4 all pass -> maintenance; NEW angle: test env (mise py3.13) became executable this cycle -> ran integration tests as ground truth for the first time",
+    "delta": "discovered+recorded previously-uncaptured test<->code schema drift: RetrievalResult (4 required fields, no defaults, retrieval.py#L18-L24) constructed without `source` in 2 integration tests (test_context_compression L152/L157, test_confidence_calculation L248) -> reproducible TypeError -> 2 tests fail, blocking MET-003 and MS-004 integration acceptance. Production code internally consistent (all 3 sites supply source). New open conflict CFLT-SCHEMA-001 (medium, contradiction, code-is-truth: stale tests predate source field). conflicts 5->6. No app/test code changed.",
+    "test_run_evidence": "pytest ::test_context_compression + ::test_confidence_calculation -> 2 FAILED, TypeError 'missing required positional argument: source' at L152 and L248 (mise py3.13, 2026-07-27)",
     "code_changed_since_bootstrap": false,
     "quality_gate_all_pass": true
   }

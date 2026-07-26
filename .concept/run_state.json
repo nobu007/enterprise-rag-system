@@ -1,9 +1,9 @@
 {
-  "run_index": 6,
-  "last_run_id": "concept-maintenance-cycle6",
+  "run_index": 7,
+  "last_run_id": "concept-maintenance-cycle7",
   "phase": "maintenance",
-  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance phase (Q2 code_symbol line-verification + charter milestone-status accuracy)",
-  "previous_phase": "maintenance (cycle 5 evidence-accuracy verification sweep)",
+  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance phase. NEW verification angle: test env (mise py3.13) became executable this cycle, enabling ground-truth test runs for the first time.",
+  "previous_phase": "maintenance (cycle 6 Q2 code_symbol line-verification + charter milestone-status accuracy)",
   "cycle1_delta": "conflicts.yml +2 conflicts (Weaviate, Document Relationship Graph) resolving D-BOOT-005",
   "cycle2_delta": "exhaustive README Features verification: +CFLT-AUDIT-001 (audit logging), +AMB-003 (auth/authorization partial). D-BOOT-005 verification complete (all 13 README features checked).",
   "cycle3_delta": "raised Q3 53.6%->71.4% via +5 test-grounded invariants (INV-RES-003/INV-CACHE-002/INV-CACHE-003/INV-CORE-002/INV-RES-004). invariants 15->20.",
@@ -11,5 +11,7 @@
   "cycle5_delta": "anti-trust-the-numbers verification sweep. Independently recomputed all 8 quality gates vs current code (all PASS). Re-checked every evidence ref (32 ontology + 29 invariant). Found+corrected INV-VAL-001: statement over-specified rejection as 422-only (actual layer-based 400/413/422/429) and over-claimed ErrorResponse shape (HTTPException returns FastAPI {detail}); evidence cited nonexistent L297/`==422`. Rewrote against verified code. related_terms DocumentValidator->SecurityValidator. Corrected Q3 methodology test_files 28->24 (strict), Q3 71.4%->83.3%. invariants remain 20.",
   "evidence_audit_complete_cycle5": "all 61 evidence refs now resolve to real files/lines; no remaining known drift",
   "cycle6_delta": "charter.yml MS-004 status planned->active (all 3 deliverables implemented + acceptance tests present; not 'done' since tests unrunnable in unprovisioned env). Q2 independently line-verified: 63/63 mappings code_symbols resolve to real file + declared symbol (0 missing) -> confirms Q2=100%. First dimension to add a new verification angle since cycle5's evidence sweep.",
+  "cycle7_delta": "First cycle with executable test env (mise py3.13; fastapi/starlette/numpy/redis/rank_bm25 present). Ran integration tests as a NEW verification angle and found previously-uncaptured test<->code schema drift: RetrievalResult (@dataclass, 4 required fields document/score/metadata/source, no defaults; retrieval.py#L18-L24) is constructed by 2 integration tests WITHOUT source (test_context_compression L152/L157, test_confidence_calculation L248) -> TypeError at collection -> 2 tests fail. Confirmed by real pytest run (reproducible TypeError: missing 'source'). Production code is internally consistent (all 3 sites supply source). Recorded as open conflict CFLT-SCHEMA-001 (medium, code-is-truth: stale tests predate source field). conflicts 5->6. All 8 quality gates still PASS (conflicts count is not a quality-gate metric). No app/test code changed (code_changed_since_bootstrap stays false; resolution delegated to a test-fix cycle).",
+  "cycle7_test_run_evidence": "pytest tests/integration/test_rag_integration.py::test_context_compression + ::test_confidence_calculation -> 2 FAILED, both 'TypeError: RetrievalResult.__init__() missing 1 required positional argument: source' at L152 and L248 (mise py3.13, 2026-07-27)",
   "created_at_note": "bootstrap; timestamp injected post-workflow per spec (no Date.now in scripts)"
 }

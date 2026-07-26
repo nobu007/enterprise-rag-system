@@ -74,6 +74,21 @@ conflicts:
       decision_key: "AUTO:QueryApiPath.path_contract:versioned_prefix"
       summary: "コード(実際のマウントパス)を正とし、クエリAPIは '/api/v1/query/{,batch,stream}' と扱う。mappings.yml の '/query' 系表記は論理パスの簡略表現として許容し、正確なパスは本矛盾に記録。README の curl 例の修正は docs 整備に委ねる（概念整備のスコープ外）。"
 
+  - id: "CFLT-SCHEMA-001"
+    term: "RetrievalResult"
+    about: "dataclass_field_contract"
+    severity: "medium"
+    nli: "contradiction"
+    items:
+      - claim: "RetrievalResult は4フィールド(document/score/metadata/source)すべてが必須の @dataclass で、デフォルト値なし。プロダクションコードは3箇所すべてで source を供給する（metadata.get('source','unknown')）。ontology TERM-CORE-007 の定義もこれに一致する"
+        source: "code:app/services/retrieval.py#L18-L24 ('@dataclass class RetrievalResult: document: str / score: float / metadata: Dict / source: str' — デフォルト無し) / code:app/services/retrieval.py#L173-L178, #L197-L202 (source= を供給) / code:app/api/routes/query.py#L435-L440 (source= を供給) / concept:.concept/ontology.yml RetrievalResult#L85-L93"
+      - claim: "統合テスト test_context_compression と test_confidence_calculation は RetrievalResult を source 省略で3箇所(L152,L157,L248)で構築する。source は必須引数のため構築時に TypeError となり、両テストは収集/実行時に失敗する。これは MET-003(pytest 全件パス) と MS-004 受入(統合テスト) を阻害する"
+        source: "code:tests/integration/test_rag_integration.py#L152-L161 (test_context_compression, 2件 source 省略) / code:tests/integration/test_rag_integration.py#L248-L253 (test_confidence_calculation, source 省略) / 実行証拠: pytest -> 'TypeError: RetrievalResult.__init__() missing 1 required positional argument: source' at L152 and L248 (2026-07-27 実測, mise py3.13)"
+    status: "open"
+    active_workaround:
+      decision_key: "AUTO:RetrievalResult.dataclass_field_contract:code_is_truth_tests_stale"
+      summary: "コード(dataclass 定義と3つのプロダクション構築サイト)を Truth とし、ontology TERM-CORE-007(4必須フィールド)は正確と扱う。統合テスト3箇所は source フィールド追加前に書かれた stale なテストと判定。本矛盾として記録し、解決は該当3サイトへ source= 引数を追加するテスト修正に委ねる（実コード/テスト変更は概念整備のスコープ外、過去6サイクルの code_changed_since_bootstrap=false 前例に従う）。"
+
 # 備考（D-BOOT-005 解決 — 完了 + cycle4 拡張）:
 # bootstrap(cycle 0) は「README 言及の Weaviate/Chroma/DRG の実装網羅度は後続サイクルで検証」と保留していた。
 # 検証は README Features セクション(L70-L83) の全13項目を網羅済み:
@@ -90,3 +105,7 @@ conflicts:
 #            INV-IF-001 は /documents をライブAPIと過大表明していたため是正済み。
 #   矛盾(✗): README/mappings の '/query' 表記 vs 実装の '/api/v1/query/' → CFLT-APIPATH-001 (low)。
 #   ライブな外部API面(確定): /api/v1/query/{,batch,stream}, /api/v1/ingest[...], /health[/detailed], /cache/stats。
+#
+# cycle7 (2026-07-27) — テスト環境(mise py3.13)が初めて実行可能になり、新検証角度「実テスト実行」で発見:
+#   矛盾(✗): RetrievalResult(dataclass 4必須フィールド) vs 統合テストの source 省略構築 → TypeError → 2テスト失敗 → CFLT-SCHEMA-001 (medium)。
+#            プロダクションコード(3サイト)は整合。stale なテスト側のドリフト。MET-003/MS-004 を阻害。

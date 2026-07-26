@@ -89,3 +89,13 @@
 - Linked: CFLT-APIPATH-001 / term QueryRequest
 - Revert Triggers: README curl 例のパス修正、またはマウント prefix 変更
 
+## 2026-07-27 maintenance (cycle 7 / 実テスト実行で発見した schema drift)
+
+### AUTO:RetrievalResult.dataclass_field_contract:code_is_truth_tests_stale
+- Status: ACTIVE
+- Chosen: RetrievalResult は4必須フィールド(document/score/metadata/source)の @dataclass（デフォルト無し）。プロダクション3サイトは整合。統合テスト2件(test_context_compression L152/L157, test_confidence_calculation L248)が source 省略で構築し TypeError で失敗。コードを正とし、テスト側を stale と判定。
+- Policy: code_is_truth + Rule 4（出典なき確定禁止: テストは明確に矛盾）+ 最小半径（app/test コード変更は概念整備スコープ外）
+- Expires After Runs: 20
+- Linked: CFLT-SCHEMA-001 / term RetrievalResult (TERM-CORE-007) / 阻害対象 MET-003 + MS-004 統合受入
+- Revert Triggers: 該当3テストサイトへ `source=` 引数追加（テスト修正）で TypeError 解消時、本決定と CFLT-SCHEMA-001 を解決済みへ
+

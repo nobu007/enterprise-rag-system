@@ -23,3 +23,9 @@ _bmad/
 .ucg-temp/
 .ucg_hang_detection.json
 worktrees/
+
+# === tas-autopilot repo-standard (kind=eval) ===
+results/
+.benchmarks/runs/
+**/runs/
+# === /tas-autopilot repo-standard ===

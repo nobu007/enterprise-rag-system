@@ -2,6 +2,11 @@
 __pycache__/
 *.py[cod]
 
+# pytest-cov outputs
+.coverage
+htmlcov/
+coverage.xml
+
 # Environment
 .env
 

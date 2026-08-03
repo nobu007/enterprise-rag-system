@@ -24,6 +24,9 @@ _bmad/
 .ucg_hang_detection.json
 worktrees/
 
+# Tooling (MCP servers)
+.serena/
+
 # === tas-autopilot repo-standard (kind=eval) ===
 results/
 .benchmarks/runs/

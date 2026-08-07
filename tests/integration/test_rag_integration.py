@@ -171,7 +171,7 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+async def test_batch_query():
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -184,11 +184,11 @@ def test_batch_query():
 
     embedding_model = get_embedding_model()
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
-    pipeline = RAGPipeline(retriever=retriever)
+    pipeline = RAGPipeline(retriever=retriever, llm_client=AsyncMock())
 
     # Batch query
     questions = ["Question 1?", "Question 2?", "Question 3?"]
-    responses = pipeline.batch_query(questions)
+    responses = await pipeline.batch_query(questions)
 
     assert len(responses) == len(questions)
 

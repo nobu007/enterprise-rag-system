@@ -15,7 +15,7 @@ from typing import Dict, Any
 
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.core.security import SecurityValidator
 
@@ -66,20 +66,38 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             call_next: Next middleware/handler in chain
 
         Returns:
-            HTTP response with security headers
+            HTTP response with security headers. Validation failures are
+            returned as JSONResponse with the intended status code.
 
         Raises:
             HTTPException: If validation fails
         """
-        # 1. Content-Length check (DoS protection)
-        await self._validate_content_length(request)
+        # NOTE: BaseHTTPMiddleware executes *outside* FastAPI's
+        # ExceptionMiddleware. An HTTPException raised here (before call_next)
+        # would bubble up to ServerErrorMiddleware and be rendered as a 500
+        # instead of the intended client-facing status. Catch and convert it
+        # into a proper response so malicious/oversized requests are rejected
+        # with their real status code (400/413) under modern Starlette.
+        try:
+            # 1. Content-Length check (DoS protection)
+            await self._validate_content_length(request)
 
-        # 2. Body validation for POST/PUT/PATCH requests
-        if request.method in ["POST", "PUT", "PATCH"]:
-            await self._validate_request_body(request)
+            # 2. Body validation for POST/PUT/PATCH requests
+            if request.method in ["POST", "PUT", "PATCH"]:
+                await self._validate_request_body(request)
 
-        # 3. Header validation
-        await self._validate_headers(request)
+            # 3. Header validation
+            await self._validate_headers(request)
+        except HTTPException as exc:
+            if self.log_suspicious:
+                logger.info(
+                    f"Request rejected ({exc.status_code}): {exc.detail} "
+                    f"- Client: {request.client.host}"
+                )
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+            )
 
         # 4. Process request through next middleware/handler
         response = await call_next(request)

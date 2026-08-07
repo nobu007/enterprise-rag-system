@@ -16,14 +16,22 @@ from datetime import datetime
 import sys
 
 
-# Mock numpy before importing
+# Stub numpy only for the ranking import, then restore it. A MagicMock left
+# in sys.modules leaks process-wide and breaks faiss's lazy import
+# (numpy.__version__) in other tests, e.g. test_vectordb_collections.
+_numpy_stub = sys.modules.get('numpy')
 sys.modules['numpy'] = MagicMock()
-
-from app.services.ranking import (
-    QueryResultRanker,
-    get_ranker,
-    reset_ranker
-)
+try:
+    from app.services.ranking import (
+        QueryResultRanker,
+        get_ranker,
+        reset_ranker
+    )
+finally:
+    if _numpy_stub is None:
+        sys.modules.pop('numpy', None)
+    else:
+        sys.modules['numpy'] = _numpy_stub
 
 
 @pytest.fixture

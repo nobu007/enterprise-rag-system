@@ -22,16 +22,24 @@ from typing import AsyncGenerator
 from dataclasses import dataclass
 from typing import Dict, Any
 
-# Mock numpy before any imports
+# Stub numpy only for the streaming import, then restore it. A MagicMock left
+# in sys.modules leaks process-wide and breaks faiss's lazy import
+# (numpy.__version__) in other tests, e.g. test_vectordb_collections.
+_numpy_stub = sys.modules.get('numpy')
 sys.modules['numpy'] = MagicMock()
-
-from app.services.streaming import (
-    StreamingChunk,
-    StreamingRAGService,
-    StreamingResponseError,
-    format_sse_stream
-)
-from openai import AsyncOpenAI
+try:
+    from app.services.streaming import (
+        StreamingChunk,
+        StreamingRAGService,
+        StreamingResponseError,
+        format_sse_stream
+    )
+    from openai import AsyncOpenAI
+finally:
+    if _numpy_stub is None:
+        sys.modules.pop('numpy', None)
+    else:
+        sys.modules['numpy'] = _numpy_stub
 
 # Define RetrievalResult locally to avoid import issues
 @dataclass

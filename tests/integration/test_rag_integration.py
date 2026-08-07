@@ -38,6 +38,20 @@ def sample_documents():
     ]
 
 
+def _make_mock_embedding_model():
+    """Deterministic embedding model that makes no live OpenAI call.
+
+    Reuses the project's standard mock idiom (see ``tests/unit/test_retrieval.py``)
+    so the integration tests below exercise the real vector-db / retrieval /
+    metadata-filter machinery without valid ``OPENAI_API_KEY`` credentials.
+    """
+    model = MagicMock()
+    model.embed_texts.side_effect = lambda texts: [[0.1] * 1536 for _ in texts]
+    model.embed_query.return_value = [0.1] * 1536
+    model.dimension = 1536
+    return model
+
+
 @pytest.mark.integration
 def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     """Test complete RAG pipeline"""
@@ -79,13 +93,12 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 def test_vector_db_operations(temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
-    embedding_model = get_embedding_model()
+    embedding_model = _make_mock_embedding_model()
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
@@ -111,14 +124,13 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 def test_hybrid_retrieval(temp_vector_db, sample_documents):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
-    embedding_model = get_embedding_model()
+    embedding_model = _make_mock_embedding_model()
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
@@ -197,12 +209,11 @@ async def test_batch_query():
 def test_retrieval_with_filters():
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
 
-    embedding_model = get_embedding_model()
+    embedding_model = _make_mock_embedding_model()
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]

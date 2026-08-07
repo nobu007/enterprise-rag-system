@@ -354,8 +354,11 @@ class FAISSVectorDB(VectorDB):
         collection: str = "default"
     ) -> None:
         """Insert or update vectors in FAISS for a specific collection"""
-        # Get or create collection index
-        index = self._get_or_create_collection(collection)
+        # Get or create collection index, inferring the dimension from the
+        # incoming vectors so a fresh collection bootstraps without a prior
+        # create_index() call.
+        dimension = len(vectors[0]) if vectors else None
+        index = self._get_or_create_collection(collection, dimension=dimension)
         if index is None:
             raise RuntimeError(f"Index for collection '{collection}' not created. Call create_index() first.")
 
@@ -424,6 +427,13 @@ class FAISSVectorDB(VectorDB):
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+        # Apply metadata filters (post-filter within the fetched top_k window)
+        if filter_dict:
+            search_results = [
+                r for r in search_results
+                if all(r.metadata.get(k) == v for k, v in filter_dict.items())
+            ]
 
         return search_results
     

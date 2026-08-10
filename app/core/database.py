@@ -359,8 +359,6 @@ async def get_database_pool() -> DatabasePool:
     Raises:
         RuntimeError: If pool has not been initialized
     """
-    global _global_pool
-
     if _global_pool is None:
         raise RuntimeError(
             "Database pool not initialized. Call init_database_pool() first."

@@ -199,7 +199,7 @@ class CircuitBreaker:
                 exception_type=type(e).__name__
             ).inc()
             raise
-        except Exception as e:
+        except Exception:
             # Unexpected exceptions still count as failures
             self._on_failure()
             raise
@@ -229,7 +229,7 @@ class CircuitBreaker:
                 exception_type=type(e).__name__
             ).inc()
             raise
-        except Exception as e:
+        except Exception:
             self._on_failure()
             raise
 

@@ -363,7 +363,7 @@ class DocumentValidator:
         if sql_matches:
             result.add_error(
                 "SECURITY_SQL_INJECTION",
-                f"SQL injection pattern detected"
+                "SQL injection pattern detected"
             )
 
         # Check path traversal patterns
@@ -371,7 +371,7 @@ class DocumentValidator:
         if path_matches:
             result.add_error(
                 "SECURITY_PATH_TRAVERSAL",
-                f"Path traversal pattern detected"
+                "Path traversal pattern detected"
             )
 
         # Check command injection patterns
@@ -379,7 +379,7 @@ class DocumentValidator:
         if command_matches:
             result.add_error(
                 "SECURITY_COMMAND_INJECTION",
-                f"Command injection pattern detected"
+                "Command injection pattern detected"
             )
 
     def _validate_pii(self, document, result: ValidationResult):
@@ -420,7 +420,7 @@ class DocumentValidator:
             if self.strict_mode:
                 result.add_error(
                     "PII_SSN",
-                    f"SSN patterns detected"
+                    "SSN patterns detected"
                 )
 
         # Check credit cards
@@ -430,7 +430,7 @@ class DocumentValidator:
             if self.strict_mode:
                 result.add_error(
                     "PII_CREDIT_CARD",
-                    f"Credit card patterns detected"
+                    "Credit card patterns detected"
                 )
 
     def _validate_format(self, document, result: ValidationResult):

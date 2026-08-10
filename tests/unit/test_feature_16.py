@@ -16,6 +16,7 @@ import pytest
 import json
 import asyncio
 import sys
+from contextlib import aclosing
 from unittest.mock import MagicMock, AsyncMock, patch, Mock
 from datetime import datetime
 from typing import AsyncGenerator
@@ -426,10 +427,15 @@ class TestFormatSSEStream:
             yield StreamingChunk(content="", is_done=True)
 
         sse_lines = []
-        async for sse in format_sse_stream(chunk_generator()):
-            sse_lines.append(sse)
-            if len(sse_lines) >= 2:  # Collect at least 2
-                break
+        # aclose the stream so the early break does not leave chunk_generator
+        # (and its format_sse_stream wrapper) suspended — aclose propagates from
+        # the outer generator to the inner one via END_ASYNC_FOR, avoiding a
+        # "coroutine 'aclose' was never awaited" RuntimeWarning on GC.
+        async with aclosing(format_sse_stream(chunk_generator())) as stream:
+            async for sse in stream:
+                sse_lines.append(sse)
+                if len(sse_lines) >= 2:  # Collect at least 2
+                    break
 
         assert len(sse_lines) >= 2
         assert all(line.startswith("data: ") for line in sse_lines)

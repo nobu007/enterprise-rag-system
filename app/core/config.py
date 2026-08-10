@@ -5,9 +5,8 @@ This module handles all configuration settings using Pydantic for validation.
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
+from pydantic import Field
 from typing import Optional, List
-import os
 
 
 class Settings(BaseSettings):

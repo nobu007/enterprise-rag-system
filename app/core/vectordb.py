@@ -7,9 +7,7 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
-import numpy as np
 from dataclasses import dataclass
-import os
 
 from app.core.logging_config import get_logger
 from app.core import metrics

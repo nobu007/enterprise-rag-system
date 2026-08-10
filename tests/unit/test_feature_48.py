@@ -13,7 +13,7 @@ Tests cover:
 
 import pytest
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.concurrency import (
@@ -45,7 +45,7 @@ class TestConcurrencyStats:
 
     def test_create_stats_with_values(self):
         """Test creating stats with specific values"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         stats = ConcurrencyStats(
             total_requests=100,
             active_requests=5,

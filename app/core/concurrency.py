@@ -8,7 +8,7 @@ of simultaneous requests and prevent resource exhaustion.
 import asyncio
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from app.core.logging_config import get_logger
@@ -24,7 +24,7 @@ class ConcurrencyStats:
     rejected_requests: int = 0
     completed_requests: int = 0
     peak_concurrent: int = 0
-    last_reset: datetime = field(default_factory=datetime.utcnow)
+    last_reset: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert stats to dictionary"""

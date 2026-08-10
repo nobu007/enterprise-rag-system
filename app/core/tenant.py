@@ -7,7 +7,7 @@ ensuring data segregation between different tenants/organizations.
 
 from typing import Optional, Dict, Any, List
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import secrets
 from pydantic import BaseModel, Field, field_validator
@@ -40,8 +40,8 @@ class Tenant(BaseModel):
     status: TenantStatus = Field(default=TenantStatus.PENDING, description="Tenant status")
     config: Dict[str, Any] = Field(default_factory=dict, description="Tenant configuration")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Tenant metadata")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
-    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Last update timestamp")
 
     @field_validator('tenant_id')
     @classmethod
@@ -88,7 +88,7 @@ class Tenant(BaseModel):
             value: New value
         """
         self.config[key] = value
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert tenant to dictionary representation"""
@@ -227,7 +227,7 @@ class TenantManager:
         if metadata is not None:
             tenant.metadata.update(metadata)
 
-        tenant.updated_at = datetime.utcnow()
+        tenant.updated_at = datetime.now(timezone.utc)
         return tenant
 
     def delete_tenant(self, tenant_id: str) -> bool:

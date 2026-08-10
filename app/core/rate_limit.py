@@ -6,9 +6,7 @@ and ensure fair resource allocation.
 """
 
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from fastapi import Request
-from typing import Callable
 
 
 def get_user_id(request: Request) -> str:

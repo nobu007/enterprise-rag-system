@@ -580,8 +580,9 @@ async def ingest_documents_batch(
             for doc in request.documents
         ]
 
-        # Submit task to Celery
-        task = process_document_batch.apply_async(
+        # Submit task to Celery (AsyncResult intentionally unused: the
+        # response tracks the task via the caller-generated task_id above)
+        process_document_batch.apply_async(
             args=[documents_data, request.collection, request.chunk_size, request.chunk_overlap],
             task_id=task_id
         )

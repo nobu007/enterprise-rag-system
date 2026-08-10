@@ -8,9 +8,8 @@ from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, AsyncGenerator
-import asyncio
 
-from app.services.rag_pipeline import RAGResponse, RAGPipeline
+from app.services.rag_pipeline import RAGPipeline
 from app.services.ranking import QueryResultRanker
 from app.services.streaming import StreamingRAGService, format_sse_stream
 from app.api.dependencies import get_rag_pipeline, get_llm_client

@@ -5,13 +5,11 @@ This module provides enhanced document loading with table and chart extraction.
 For backward compatibility, the original document_loader.py is maintained.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from pathlib import Path
-from dataclasses import dataclass
-import hashlib
 
 from app.core.logging_config import get_logger
-from app.services.parser import DocumentParser, TableFormat, ParsedContent
+from app.services.parser import DocumentParser, TableFormat
 
 
 logger = get_logger(__name__)

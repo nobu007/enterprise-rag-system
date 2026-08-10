@@ -21,7 +21,6 @@ try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.backends import default_backend
     from cryptography.exceptions import InvalidTag
     CRYPTOGRAPHY_AVAILABLE = True
 except ImportError:

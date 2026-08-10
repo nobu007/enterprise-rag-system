@@ -5,7 +5,7 @@ This module provides advanced parsing capabilities for enterprise documents,
 including table extraction, chart detection, and formatting preservation.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 import re
@@ -148,7 +148,7 @@ class DocumentParser:
         # Try to import pdfplumber for advanced PDF parsing
         self.pdfplumber_available = False
         try:
-            import pdfplumber
+            import pdfplumber  # noqa: F401 (probe import: tests availability)
             self.pdfplumber_available = True
             logger.info("pdfplumber is available for enhanced PDF parsing")
         except ImportError:

@@ -259,16 +259,30 @@ class DocumentEncryption:
             metadata: Document metadata dictionary
         
         Returns:
-            Updated metadata with encryption information
+            Updated metadata with encryption information and the encrypted
+            payload (``encrypted_content`` / ``encryption_nonce`` /
+            ``encryption_salt`` / ``encryption_tag``), which is required to
+            decrypt the document later.
         """
         result = self.encrypt(content)
-        
+
         # Update metadata with encryption info
         updated_metadata = metadata.copy()
         updated_metadata['encrypted'] = True
         updated_metadata['encryption_version'] = '1.0'
         updated_metadata['encryption_algorithm'] = 'AES-256-GCM'
-        
+
+        # Persist the encrypted payload. Without this the ciphertext computed
+        # above is discarded, so the plaintext becomes unrecoverable even
+        # though the metadata advertises encrypted=True.
+        # Key names intentionally match Document.encrypt_content /
+        # Document.decrypt_content (app/services/document_loader.py) so both
+        # encryption paths share a single metadata schema.
+        updated_metadata['encrypted_content'] = result.encrypted_data
+        updated_metadata['encryption_nonce'] = result.nonce
+        updated_metadata['encryption_salt'] = result.salt
+        updated_metadata['encryption_tag'] = result.tag
+
         return updated_metadata
     
     def is_encrypted(self, metadata: Dict[str, Any]) -> bool:

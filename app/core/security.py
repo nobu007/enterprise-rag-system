@@ -9,7 +9,6 @@ This module provides validators for:
 """
 
 import re
-from typing import Optional
 
 
 class SecurityValidator:

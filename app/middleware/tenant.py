@@ -9,7 +9,6 @@ from typing import Optional, Callable
 from fastapi import Request, Response, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
-import logging
 
 from app.core.tenant import (
     TenantContext,

@@ -10,7 +10,7 @@ not a trained ML model. For true learning-to-rank with trained models,
 consider implementing Gradient Boosting or neural ranking models.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from math import exp
 from app.core.logging_config import get_logger
 from app.core.config import get_settings

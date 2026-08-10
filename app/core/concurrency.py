@@ -9,7 +9,6 @@ import asyncio
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import logging
 
 from app.core.logging_config import get_logger
 

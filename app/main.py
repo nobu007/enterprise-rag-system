@@ -9,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
-import uuid
 
 from app.core.config import get_settings
 from app.core.vectordb import get_vector_db

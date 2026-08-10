@@ -10,7 +10,6 @@ Features:
 """
 
 import asyncpg
-import logging
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 from app.core.logging_config import get_logger

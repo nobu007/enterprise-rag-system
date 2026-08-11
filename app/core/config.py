@@ -10,111 +10,115 @@ from typing import Optional, List
 
 
 class Settings(BaseSettings):
-    """Application settings with environment variable support"""
+    """Application settings with environment variable support.
+
+    Each field is bound to its environment variable by field name
+    (case-insensitively, via ``case_sensitive=False`` in ``model_config``).
+    The field name upper-cased equals the env var a deployment sets, e.g.
+    field ``openai_api_key`` reads ``OPENAI_API_KEY``. Explicit ``env=``
+    aliases were therefore redundant and have been removed.
+    """
 
     # API Keys
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
-    anthropic_api_key: Optional[str] = Field(None, env="ANTHROPIC_API_KEY")
-    cohere_api_key: Optional[str] = Field(None, env="COHERE_API_KEY")
+    openai_api_key: str = Field(...)
+    anthropic_api_key: Optional[str] = Field(None)
+    cohere_api_key: Optional[str] = Field(None)
 
     # Vector Database
-    pinecone_api_key: Optional[str] = Field(None, env="PINECONE_API_KEY")
-    pinecone_environment: str = Field("us-west1-gcp", env="PINECONE_ENVIRONMENT")
-    pinecone_index_name: str = Field("enterprise-rag", env="PINECONE_INDEX_NAME")
+    pinecone_api_key: Optional[str] = Field(None)
+    pinecone_environment: str = Field("us-west1-gcp")
+    pinecone_index_name: str = Field("enterprise-rag")
 
     # File Paths (Security: no hardcoded paths)
-    faiss_index_path: str = Field("./data/faiss_index.bin", env="FAISS_INDEX_PATH")
-    chroma_persist_dir: str = Field("./data/chroma", env="CHROMA_PERSIST_DIR")
+    faiss_index_path: str = Field("./data/faiss_index.bin")
+    chroma_persist_dir: str = Field("./data/chroma")
 
     # CORS (Security: controlled origins)
     allowed_origins: str = Field(
         "http://localhost:8000,http://localhost:3000",
-        env="ALLOWED_ORIGINS"
     )
 
     # Embedding Configuration
-    embedding_model: str = Field("text-embedding-ada-002", env="EMBEDDING_MODEL")
-    embedding_dimension: int = Field(1536, env="EMBEDDING_DIMENSION")
+    embedding_model: str = Field("text-embedding-ada-002")
+    embedding_dimension: int = Field(1536)
 
     # Search Configuration
-    hybrid_search_alpha: float = Field(0.5, env="HYBRID_SEARCH_ALPHA")
-    top_k_results: int = Field(5, env="TOP_K_RESULTS")
+    hybrid_search_alpha: float = Field(0.5)
+    top_k_results: int = Field(5)
     reranker_model: str = Field(
         "cross-encoder/ms-marco-MiniLM-L-12-v2",
-        env="RERANKER_MODEL"
     )
 
     # Feature-Based Ranking Configuration
-    ranking_semantic_weight: float = Field(0.4, env="RANKING_SEMANTIC_WEIGHT")
-    ranking_keyword_weight: float = Field(0.3, env="RANKING_KEYWORD_WEIGHT")
-    ranking_freshness_weight: float = Field(0.1, env="RANKING_FRESHNESS_WEIGHT")
-    ranking_popularity_weight: float = Field(0.2, env="RANKING_POPULARITY_WEIGHT")
-    ranking_enabled: bool = Field(False, env="RANKING_ENABLED")
+    ranking_semantic_weight: float = Field(0.4)
+    ranking_keyword_weight: float = Field(0.3)
+    ranking_freshness_weight: float = Field(0.1)
+    ranking_popularity_weight: float = Field(0.2)
+    ranking_enabled: bool = Field(False)
 
     # LLM Configuration
-    llm_model: str = Field("gpt-4-turbo-preview", env="LLM_MODEL")
-    llm_temperature: float = Field(0.7, env="LLM_TEMPERATURE")
-    llm_max_tokens: int = Field(2048, env="LLM_MAX_TOKENS")
+    llm_model: str = Field("gpt-4-turbo-preview")
+    llm_temperature: float = Field(0.7)
+    llm_max_tokens: int = Field(2048)
 
     # Performance
-    enable_caching: bool = Field(True, env="ENABLE_CACHING")
-    cache_ttl_seconds: int = Field(3600, env="CACHE_TTL_SECONDS")
-    max_workers: int = Field(4, env="MAX_WORKERS")
+    enable_caching: bool = Field(True)
+    cache_ttl_seconds: int = Field(3600)
+    max_workers: int = Field(4)
 
     # Monitoring
-    langsmith_api_key: Optional[str] = Field(None, env="LANGSMITH_API_KEY")
-    langsmith_project: str = Field("enterprise-rag", env="LANGSMITH_PROJECT")
-    arize_api_key: Optional[str] = Field(None, env="ARIZE_API_KEY")
-    enable_metrics: bool = Field(True, env="ENABLE_METRICS")
+    langsmith_api_key: Optional[str] = Field(None)
+    langsmith_project: str = Field("enterprise-rag")
+    arize_api_key: Optional[str] = Field(None)
+    enable_metrics: bool = Field(True)
 
     # Application
     app_name: str = "Enterprise RAG System"
     app_version: str = "0.2.0"
-    debug: bool = Field(False, env="DEBUG")
+    debug: bool = Field(False)
 
     # Server
-    server_host: str = Field("0.0.0.0", env="SERVER_HOST")
-    server_port: int = Field(8000, env="SERVER_PORT")
+    server_host: str = Field("0.0.0.0")
+    server_port: int = Field(8000)
 
     # CORS Headers (security: restrict allowed headers)
     allowed_headers: str = Field(
         "Content-Type,Authorization,X-API-Key,X-Request-ID",
-        env="ALLOWED_HEADERS",
     )
 
     # Request size limit (bytes)
-    max_request_size: int = Field(10 * 1024 * 1024, env="MAX_REQUEST_SIZE")
+    max_request_size: int = Field(10 * 1024 * 1024)
 
     # Rate Limiting
-    rate_limit_enabled: bool = Field(True, env="RATE_LIMIT_ENABLED")
-    rate_limit_per_minute: int = Field(60, env="RATE_LIMIT_PER_MINUTE")
-    rate_limit_per_hour: int = Field(1000, env="RATE_LIMIT_PER_HOUR")
-    rate_limit_burst: int = Field(10, env="RATE_LIMIT_BURST")
+    rate_limit_enabled: bool = Field(True)
+    rate_limit_per_minute: int = Field(60)
+    rate_limit_per_hour: int = Field(1000)
+    rate_limit_burst: int = Field(10)
 
     # Concurrency Control
-    max_concurrent_requests: int = Field(10, env="MAX_CONCURRENT_REQUESTS")
+    max_concurrent_requests: int = Field(10)
 
     # Redis Cache Configuration
-    redis_host: str = Field("localhost", env="REDIS_HOST")
-    redis_port: int = Field(6379, env="REDIS_PORT")
-    redis_db: int = Field(0, env="REDIS_DB")
-    redis_password: Optional[str] = Field(None, env="REDIS_PASSWORD")
-    cache_enabled: bool = Field(True, env="CACHE_ENABLED")
-    cache_ttl_seconds: int = Field(3600, env="CACHE_TTL_SECONDS")
+    redis_host: str = Field("localhost")
+    redis_port: int = Field(6379)
+    redis_db: int = Field(0)
+    redis_password: Optional[str] = Field(None)
+    cache_enabled: bool = Field(True)
+    cache_ttl_seconds: int = Field(3600)
 
     # Celery Configuration
-    celery_broker_url: str = Field("redis://localhost:6379/1", env="CELERY_BROKER_URL")
-    celery_result_backend: str = Field("redis://localhost:6379/2", env="CELERY_RESULT_BACKEND")
+    celery_broker_url: str = Field("redis://localhost:6379/1")
+    celery_result_backend: str = Field("redis://localhost:6379/2")
 
     # PostgreSQL Database Configuration
-    postgres_host: str = Field("localhost", env="POSTGRES_HOST")
-    postgres_port: int = Field(5432, env="POSTGRES_PORT")
-    postgres_database: str = Field("enterprise_rag", env="POSTGRES_DATABASE")
-    postgres_user: str = Field("postgres", env="POSTGRES_USER")
-    postgres_password: str = Field("", env="POSTGRES_PASSWORD")
-    postgres_pool_min_size: int = Field(10, env="POSTGRES_POOL_MIN_SIZE")
-    postgres_pool_max_size: int = Field(50, env="POSTGRES_POOL_MAX_SIZE")
-    postgres_command_timeout: int = Field(60, env="POSTGRES_COMMAND_TIMEOUT")
+    postgres_host: str = Field("localhost")
+    postgres_port: int = Field(5432)
+    postgres_database: str = Field("enterprise_rag")
+    postgres_user: str = Field("postgres")
+    postgres_password: str = Field("")
+    postgres_pool_min_size: int = Field(10)
+    postgres_pool_max_size: int = Field(50)
+    postgres_command_timeout: int = Field(60)
 
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
@@ -127,7 +131,9 @@ class Settings(BaseSettings):
         return [h.strip() for h in self.allowed_headers.split(",")]
 
     # Pydantic-settings v2: SettingsConfigDict replaces the deprecated
-    # class-based ``Config``. Values unchanged -> env loading identical.
+    # class-based ``Config``. case_sensitive=False binds each field to its
+    # env var by field name case-insensitively, so the explicit env aliases
+    # above were redundant and have been removed.
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -423,6 +423,41 @@ class TestRateLimiting:
         user_id = get_user_id(request)
         assert user_id == "key:test_api_key_123"
 
+    def test_get_user_id_api_key_strips_whitespace(self):
+        """X-API-Key is stripped before building the rate-limit key.
+
+        Regression: only the IP path (get_client_ip) normalized surrounding
+        whitespace (X-Forwarded-For / X-Real-IP / CF-Connecting-IP). The
+        API-key path in get_user_id returned f"key:{api_key}" raw, so a client
+        sending "X-API-Key: realkey " vs "X-API-Key: realkey" got distinct
+        "key:..." buckets — fragmenting the per-key (authenticated) limit and
+        evading it by varying whitespace. The API-key branch is the unfixed
+        sibling of the three stripped IP headers.
+        """
+        from app.core.rate_limit import get_user_id
+
+        for padded in ("  test_api_key_123  ", "\ttest_api_key_123", "test_api_key_123\n"):
+            request = Mock(spec=Request)
+            request.headers = {"X-API-Key": padded}
+            request.client = Mock()
+            request.client.host = "192.168.1.100"
+            assert get_user_id(request) == "key:test_api_key_123"
+
+    def test_get_user_id_whitespace_only_api_key_falls_back_to_ip(self):
+        """A whitespace-only X-API-Key must not produce a bogus 'key: ' bucket.
+
+        Pre-fix a header like "X-API-Key:   " was truthy and returned
+        f"key:{api_key}" = "key:   "; after stripping it is empty and the
+        function correctly falls through to the IP identifier.
+        """
+        from app.core.rate_limit import get_user_id
+
+        request = Mock(spec=Request)
+        request.headers = {"X-API-Key": "   "}
+        request.client = Mock()
+        request.client.host = "192.168.1.100"
+        assert get_user_id(request) == "ip:192.168.1.100"
+
     def test_get_user_id_with_ip(self):
         """Test user ID with IP address"""
         from app.core.rate_limit import get_user_id

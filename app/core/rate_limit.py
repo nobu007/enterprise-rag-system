@@ -23,7 +23,14 @@ def get_user_id(request: Request) -> str:
         Unique identifier string (key:xxx or ip:xxx)
     """
     # Check for API key in headers
-    api_key = request.headers.get("X-API-Key")
+    # Strip surrounding whitespace so it can't fragment the rate-limit key:
+    # the IP path (get_client_ip) strips all three proxy headers for exactly
+    # this reason — without it here, "X-API-Key: realkey" vs "X-API-Key:
+    # realkey " yield distinct "key:..." buckets and the caller evades the
+    # per-key (authenticated) limit by varying whitespace. Sibling of the
+    # X-Real-IP/CF-Connecting-IP strip; also routes a whitespace-only header
+    # to the IP fallback instead of a bogus "key: " bucket.
+    api_key = (request.headers.get("X-API-Key") or "").strip()
     if api_key:
         return f"key:{api_key}"
 

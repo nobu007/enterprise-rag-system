@@ -39,7 +39,7 @@ class SecurityValidator:
 
     # XSS patterns
     XSS_PATTERNS = [
-        r"<script[^>]*>.*?</script>",
+        r"(?s)<script[^>]*>.*?</script>",  # (?s)=DOTALL: '.' matches newline so multi-line <script> bodies are caught
         r"javascript:",
         r"vbscript:",
         r"onerror\s*=",

@@ -61,10 +61,24 @@ class TestSecurityValidator:
             "javascript:alert('XSS')",
             "<iframe src='http://evil.com'>",
             "<div onload='alert(1)'>",
+            # multi-line script bodies (DOTALL regression): the most common
+            # real-world XSS form must not bypass the <script>...</script> rule
+            "<script>\nalert('XSS')\n</script>",
+            '<script type="text/javascript">\nsteal()\n</script>',
         ]
 
         for input_str in malicious_inputs:
             assert validator.detect_xss(input_str), f"Failed to detect: {input_str}"
+
+    def test_detect_xss_multiline_script_bypass(self):
+        """Regression: a newline inside the <script> body must not evade detection.
+
+        Before the DOTALL fix, '.*?' did not cross newlines, so any payload
+        split across lines (the typical injected form) returned False.
+        """
+        validator = SecurityValidator()
+        multiline_payload = "<script>\nalert(document.cookie)\n</script>"
+        assert validator.detect_xss(multiline_payload) is True
 
     def test_detect_xss_false(self):
         """Test XSS detection with safe input"""

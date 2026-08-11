@@ -414,32 +414,17 @@ async def stream_query(
                         collection=collection
                     )
 
-                    # Apply reranking if requested and reranker is available
+                    # Apply reranking if requested and reranker is available.
+                    # Mirror RAGPipeline's use of rerank_results, which takes
+                    # the result objects directly and returns them reordered.
+                    # (rerank() returns (index, score) tuples, not dicts, so the
+                    # previous dict-roundtrip always raised and was swallowed.)
                     if rerank and pipeline.reranker:
-                        from app.services.retrieval import RetrievalResult
-                        # Convert to format expected by reranker
-                        rerank_inputs = [
-                            {
-                                "document": r.document,
-                                "score": r.score,
-                                "metadata": r.metadata
-                            }
-                            for r in results
-                        ]
-                        reranked = pipeline.reranker.rerank(
+                        results = pipeline.reranker.rerank_results(
                             query=query,
-                            documents=rerank_inputs
+                            results=results,
+                            top_k=top_k
                         )
-                        # Convert back to RetrievalResult
-                        results = [
-                            RetrievalResult(
-                                document=r["document"],
-                                score=r["score"],
-                                metadata=r["metadata"],
-                                source=r["metadata"].get("source", "unknown")
-                            )
-                            for r in reranked
-                        ]
                         logger.info(f"Applied reranking to {len(results)} results")
 
                     return results

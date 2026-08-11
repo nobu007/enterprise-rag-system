@@ -31,10 +31,26 @@ class TestSecurityValidator:
             "' UNION SELECT * FROM users--",
             "admin'--",
             "1' AND 1=1--",
+            # block-comment evasion (single-line here; multi-line covered by
+            # the dedicated bypass regression test below)
+            "SELECT/**/1",
         ]
 
         for input_str in malicious_inputs:
             assert validator.detect_sql_injection(input_str), f"Failed to detect: {input_str}"
+
+    def test_detect_sql_injection_multiline_comment_bypass(self):
+        r"""Regression: a newline inside a /* ... */ block comment must not evade detection.
+
+        Before the DOTALL fix, the (/\*.*\*/) pattern's '.' did not cross
+        newlines, so a block comment split across lines — the classic
+        SELECT/**/1 token-splitting evasion — returned False. The payload below
+        intentionally carries no other SQL marker (no --, no OR/UNION), so it
+        isolates the block-comment rule.
+        """
+        validator = SecurityValidator()
+        multiline_payload = "SELECT/*\n*/1"
+        assert validator.detect_sql_injection(multiline_payload) is True
 
     def test_detect_sql_injection_false(self):
         """Test SQL injection detection with safe input"""

@@ -32,7 +32,7 @@ class SecurityValidator:
         r"(\bdelete\b.*\bfrom\b)",
         r"(\bupdate\b.*\bset\b)",
         r"(--)",  # SQL comment
-        r"(/\*.*\*/)",  # SQL comment
+        r"(?s)(/\*.*\*/)",  # SQL comment (?s)=DOTALL: '.' matches newline so multi-line block comments are caught
         r"(\bor\b\s+\d+\s*=\s*\d+)",
         r"(\band\b\s+\d+\s*=\s*\d+)",
     ]

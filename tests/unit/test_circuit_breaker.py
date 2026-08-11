@@ -217,6 +217,61 @@ class TestCircuitBreakerStates:
         assert breaker.state == CircuitState.OPEN
         assert breaker.opened_count == 2
 
+    async def test_half_open_retrip_records_half_open_from_state(self):
+        """A failing recovery probe re-trips HALF_OPEN -> OPEN.
+
+        The OPEN->HALF_OPEN transition never resets _failure_count, so a
+        failing recovery probe immediately satisfies the threshold again and
+        re-trips straight from HALF_OPEN. The state-change metric must record
+        from_state=half_open for this path -- the previous hardcoded
+        from_state=CLOSED mislabeled every recovery re-trip as a fresh
+        closed->open trip on the dashboard. (The sibling test above,
+        test_half_open_to_open_on_failure, is misnamed: it closes the circuit
+        first, so its second trip is really CLOSED->OPEN and never exercised
+        the half-open re-trip path.)
+        """
+        from prometheus_client import REGISTRY
+
+        name = "cb_halfopen_retrip_metric_probe"
+        config = CircuitBreakerConfig(
+            failure_threshold=2, success_threshold=2, timeout=0.1
+        )
+        breaker = CircuitBreaker(name, config)
+
+        async def failing_call():
+            raise RuntimeError("service down")
+
+        # Trip CLOSED -> OPEN
+        for _ in range(2):
+            with pytest.raises(RuntimeError):
+                await breaker.call(failing_call)
+        assert breaker.state == CircuitState.OPEN
+
+        # Wait for the recovery window so the next call enters HALF_OPEN
+        await asyncio.sleep(0.15)
+
+        # Failing recovery probe: HALF_OPEN -> OPEN (re-trip)
+        with pytest.raises(RuntimeError):
+            await breaker.call(failing_call)
+        assert breaker.state == CircuitState.OPEN
+        assert breaker.opened_count == 2
+
+        # Scan the registry for THIS breaker's half_open->open sample. A unique
+        # breaker name isolates it from other tests' counters.
+        halfopen_open_samples = [
+            sample
+            for metric in REGISTRY.collect()
+            for sample in metric.samples
+            if sample.labels.get("name") == name
+            and sample.labels.get("from_state") == CircuitState.HALF_OPEN.value
+            and sample.labels.get("to_state") == CircuitState.OPEN.value
+        ]
+        assert halfopen_open_samples, (
+            "expected a circuit_breaker_state_change sample with "
+            "from_state=half_open for the recovery re-trip"
+        )
+        assert halfopen_open_samples[0].value >= 1
+
 
 class TestCircuitBreakerSuccessPath:
     """Test circuit breaker with successful calls"""

@@ -137,6 +137,17 @@ class CircuitBreaker:
 
         if self._failure_count >= self.config.failure_threshold:
             if self._state != CircuitState.OPEN:
+                # Capture the state we are transitioning FROM before
+                # overwriting it. A breaker reaches OPEN not only from CLOSED
+                # but also from HALF_OPEN: the OPEN->HALF_OPEN transition (in
+                # _call_before) never resets _failure_count, so a failing
+                # recovery probe immediately satisfies the threshold again and
+                # re-trips straight from HALF_OPEN. Hardcoding from_state=CLOSED
+                # mislabeled those half-open re-trips on the state-change
+                # metric, so dashboards attributed every re-trip to a fresh
+                # closed->open trip. previous_state is CLOSED for the common
+                # path (unchanged behavior) and HALF_OPEN for the recovery path.
+                previous_state = self._state
                 self._state = CircuitState.OPEN
                 self._opened_count += 1
                 logger.warning(
@@ -145,7 +156,7 @@ class CircuitBreaker:
                 )
                 metrics.circuit_breaker_state_change.labels(
                     name=self.name,
-                    from_state=CircuitState.CLOSED.value,
+                    from_state=previous_state.value,
                     to_state=CircuitState.OPEN.value
                 ).inc()
 

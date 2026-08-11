@@ -98,3 +98,64 @@ class TestRequestIDFilter:
         record.request_id = "req-xyz"
         RequestIDFilter().filter(record)
         assert record.request_id == "req-xyz"
+
+
+class TestRequestIDContextVarPropagation:
+    """The per-request id must reach records emitted on CHILD loggers.
+
+    Regression: RequestIDMiddleware used to add a per-request filter to the
+    ROOT logger, but CPython applies a logger's own filters only to records
+    emitted directly on that logger -- child-logger records propagate to the
+    root HANDLER via callHandlers (running handler filters, never the parent
+    logger's). So every app.* log line showed request_id=N/A and request
+    tracing was silently non-functional. The fix binds the id to a ContextVar
+    (set_request_id) and the handler-level RequestIDFilter reads it.
+    """
+
+    def test_child_record_carries_contextvar_id(self):
+        import io
+
+        from app.core.logging_config import set_request_id, reset_request_id
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(logging.Formatter("[%(request_id)s] %(message)s"))
+        handler.addFilter(RequestIDFilter())
+
+        root = logging.getLogger()
+        root.addHandler(handler)
+        try:
+            root.setLevel(logging.INFO)
+            child = logging.getLogger("app.services.regression_child")
+            # No handler on the child -- the record propagates to root, whose
+            # handler filter (RequestIDFilter) must read the ContextVar.
+            token = set_request_id("req-real-ABC")
+            try:
+                child.info("serving request")
+            finally:
+                reset_request_id(token)
+
+            out = stream.getvalue()
+            assert "[req-real-ABC] serving request" in out
+            assert "N/A" not in out
+        finally:
+            root.removeHandler(handler)
+
+    def test_outside_request_falls_back_to_default(self):
+        """With no id bound, child records still get the 'N/A' default."""
+        import io
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(logging.Formatter("[%(request_id)s] %(message)s"))
+        handler.addFilter(RequestIDFilter())
+
+        root = logging.getLogger()
+        root.addHandler(handler)
+        try:
+            root.setLevel(logging.INFO)
+            child = logging.getLogger("app.services.regression_child2")
+            child.info("startup message")
+            assert "[N/A] startup message" in stream.getvalue()
+        finally:
+            root.removeHandler(handler)

@@ -12,6 +12,8 @@ from typing import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.logging_config import set_request_id, reset_request_id
+
 
 logger = logging.getLogger(__name__)
 
@@ -89,13 +91,16 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # Store in request state for access in endpoints
         request.state.request_id = request_id
 
-        # Create logging filter for this request
-        context_filter = RequestContextFilter(request_id)
-
-        # Add filter to root logger for this request
-        root_logger = logging.getLogger()
-        root_logger.addFilter(context_filter)
-
+        # Bind the request id to this async context so the handler-level
+        # RequestIDFilter (logging_config) attaches it to every app.* log
+        # record emitted while serving the request. A ContextVar is
+        # async-task-scoped, so concurrent requests keep distinct ids.
+        # NB: adding a per-request filter to the ROOT LOGGER (the previous
+        # approach) does NOT work -- CPython never applies a logger's own
+        # filters to records emitted on child loggers, so app log lines were
+        # always request_id=N/A. RequestContextFilter is retained for
+        # standalone/test use but is no longer the production carrier.
+        token = set_request_id(request_id)
         try:
             # Process request
             response = await call_next(request)
@@ -105,8 +110,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
             return response
         finally:
-            # Clean up filter after request to prevent memory leaks
-            root_logger.removeFilter(context_filter)
+            reset_request_id(token)
 
 
 def get_request_id(request: Request) -> str | None:

@@ -18,14 +18,54 @@ import sys
 from typing import Optional
 import os
 import re
+import contextvars
+
+
+# Per-request id for log correlation. This is the async-safe carrier of the
+# request id from RequestIDMiddleware to log records: a ContextVar is copied
+# per asyncio task, so concurrent requests each see their own id, and a single
+# handler-level RequestIDFilter can read it for records emitted on ANY logger.
+#
+# Why a ContextVar and not (as before) a per-request filter added to the root
+# LOGGER: CPython applies a logger's own filters only to records emitted
+# directly on that logger. Records emitted on child loggers (every app.*
+# module via get_logger(__name__)) propagate to the root HANDLER via
+# callHandlers, which runs handler filters but NEVER the parent logger's
+# filters. So the middleware's root-logger filter was invisible to app logs
+# and every app log line showed request_id=N/A -- request tracing was
+# silently non-functional. The handler-level RequestIDFilter below, reading
+# this ContextVar, is the fix (handler filters DO run for propagated records).
+_request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default="N/A"
+)
+
+
+def set_request_id(request_id: str):
+    """Bind ``request_id`` to the current async context (returns a reset token).
+
+    Called by RequestIDMiddleware for the duration of a request.
+    """
+    return _request_id_var.set(request_id)
+
+
+def reset_request_id(token) -> None:
+    """Undo a prior ``set_request_id`` using the token it returned."""
+    _request_id_var.reset(token)
 
 
 class RequestIDFilter(logging.Filter):
-    """Filter to add request ID to log records"""
+    """Filter to add request ID to log records.
+
+    Attached to the logging handler in setup_logging. Reads the per-request id
+    from ``_request_id_var`` so it applies to records on every app.* child
+    logger. A record that already carries a ``request_id`` (set explicitly
+    before reaching the handler) is preserved unchanged.
+    """
 
     def filter(self, record):
-        # Try to get request ID from context (will be set by middleware)
-        record.request_id = getattr(record, 'request_id', 'N/A')
+        # If the record already has a request_id, keep it; otherwise fall back
+        # to the per-request contextvar (default 'N/A' outside any request).
+        record.request_id = getattr(record, "request_id", _request_id_var.get())
         return True
 
 

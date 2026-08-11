@@ -242,6 +242,17 @@ class TextSplitter:
         chunk_overlap: int = 200,
         separators: Optional[List[str]] = None
     ):
+        # chunk_overlap must be strictly less than chunk_size: the
+        # fixed-size fallback advances by (chunk_size - chunk_overlap), and a
+        # non-positive step either raises (==: "range() arg 3 must not be
+        # zero") or silently yields zero chunks (>: empty range), dropping
+        # every document — e.g. CJK text with no usable separator.
+        if chunk_overlap >= chunk_size:
+            raise ValueError(
+                f"chunk_overlap ({chunk_overlap}) must be strictly less than "
+                f"chunk_size ({chunk_size}); a non-negative chunking step is "
+                "required or no chunks are produced."
+            )
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.separators = separators or ["\n\n", "\n", ". ", " ", ""]

@@ -171,6 +171,29 @@ class TestTextSplitter:
         assert splitter.chunk_size == 1000
         assert splitter.chunk_overlap == 200
 
+    def test_rejects_overlap_equal_to_size(self):
+        """chunk_overlap == chunk_size must raise, not crash in split_text.
+
+        Regression: the fixed-size fallback advances by
+        (chunk_size - chunk_overlap); an equal overlap gave a zero step and
+        ``range(0, n, 0)`` raised an opaque "range() arg 3 must not be zero"
+        inside split_text (reached for CJK / separator-free text).
+        """
+        import pytest
+        with pytest.raises(ValueError, match="strictly less than"):
+            TextSplitter(chunk_size=200, chunk_overlap=200)
+
+    def test_rejects_overlap_greater_than_size(self):
+        """chunk_overlap > chunk_size must raise, not silently drop text.
+
+        Regression: a negative chunking step made ``range(0, n, neg)`` yield
+        nothing, so split_text returned [] and every document was silently
+        dropped at ingest time (no error surfaced).
+        """
+        import pytest
+        with pytest.raises(ValueError, match="strictly less than"):
+            TextSplitter(chunk_size=100, chunk_overlap=200)
+
     def test_split_short_text(self):
         """Test that short text is not split."""
         splitter = TextSplitter(chunk_size=1000, chunk_overlap=0)

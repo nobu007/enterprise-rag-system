@@ -50,6 +50,32 @@ class TestParseTableRowDelimiters:
         parser = DocumentParser()
         assert parser._parse_table_row("alpha    beta") == ["alpha", "beta"]
 
+    def test_tsv_row_strips_boundary_empties(self):
+        """Regression: TSV rows with leading/trailing tabs must not gain
+        phantom boundary cells (only the ``|`` branch stripped them)."""
+        parser = DocumentParser()
+        # leading + trailing tab -> no phantom ['', ..., '']
+        assert parser._parse_table_row("\ta\tb\t") == ["a", "b"]
+        # middle empty cell preserved for column alignment
+        assert parser._parse_table_row("a\t\tb") == ["a", "", "b"]
+
+    def test_multi_space_row_strips_leading_empty(self):
+        """Regression: a space-aligned row with leading indentation must not
+        gain a phantom leading cell (re.split on the leading run yields one)."""
+        parser = DocumentParser()
+        assert parser._parse_table_row("  a  b") == ["a", "b"]
+        assert parser._parse_table_row("  alpha    beta") == ["alpha", "beta"]
+
+    def test_all_delimiter_branches_strip_boundary_consistently(self):
+        """All three delimiter branches must strip boundary empties the same
+        way -- the ``|`` branch had the fix, TSV/space did not (probe: sibling
+        branches with inconsistent normalization)."""
+        parser = DocumentParser()
+        md = parser._parse_table_row("|a|b|")
+        tsv = parser._parse_table_row("\ta\tb\t")
+        spc = parser._parse_table_row("  a  b")
+        assert md == tsv == spc == ["a", "b"]
+
 
 # --------------------------------------------------------------------------
 # _guess_chart_type branches (L435-447)

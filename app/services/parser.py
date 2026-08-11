@@ -367,30 +367,40 @@ class DocumentParser:
         # Has separators or multiple columns
         return "|" in line or "\t" in line or ("  " in line and len(line.split()) >= 3)
 
+    @staticmethod
+    def _strip_boundary_empties(cells: List[str]) -> List[str]:
+        """Drop empty cells from the start/end of a row only.
+
+        Boundary empties arise from leading/trailing delimiters -- a markdown
+        ``| a |`` row, an indented TSV ``\\ta\\tb\\t``, or a space-aligned
+        ``"  a  b"`` -- and would otherwise create phantom cells that shift
+        every later column under the wrong header (data corruption on the
+        ingestion path). Empty cells in the MIDDLE are preserved: they carry
+        column-alignment meaning for sparse rows (the old ``cells.index(c)``
+        filter dropped those too).
+        """
+        while cells and cells[0] == "":
+            cells.pop(0)
+        while cells and cells[-1] == "":
+            cells.pop()
+        return cells
+
     def _parse_table_row(self, line: str) -> List[str]:
         """Parse a table row into cells."""
-        # Try different delimiters
+        # Every delimiter branch strips boundary empties so leading/trailing
+        # delimiters don't create phantom cells; middle empties are preserved.
         if "|" in line:
             # Markdown table
             cells = [cell.strip() for cell in line.split("|")]
-            # split("|") on a "|a|b|" row yields empty strings at the start
-            # and end. Strip those boundary empties only -- empty cells in the
-            # middle carry meaning for column alignment and must be preserved.
-            # (The previous cells.index(c) filter dropped every empty cell
-            # whose first occurrence sat at a boundary, silently corrupting
-            # sparse rows by shifting columns.)
-            while cells and cells[0] == "":
-                cells.pop(0)
-            while cells and cells[-1] == "":
-                cells.pop()
-            return cells
+            return self._strip_boundary_empties(cells)
         elif "\t" in line:
             # TSV
-            return [cell.strip() for cell in line.split("\t")]
+            cells = [cell.strip() for cell in line.split("\t")]
+            return self._strip_boundary_empties(cells)
         else:
             # Try multiple spaces
-            cells = re.split(r"\s{2,}", line)
-            return [cell.strip() for cell in cells]
+            cells = [cell.strip() for cell in re.split(r"\s{2,}", line)]
+            return self._strip_boundary_empties(cells)
 
     def _detect_chart_references(self, text: str) -> List[ChartReference]:
         """

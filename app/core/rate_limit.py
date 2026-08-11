@@ -59,12 +59,16 @@ def get_client_ip(request: Request) -> str:
     # X-Real-IP header (common in Nginx/Apache)
     x_real_ip = request.headers.get("X-Real-IP")
     if x_real_ip:
-        return x_real_ip
+        # Strip so surrounding whitespace doesn't fragment the rate-limit
+        # key (X-Forwarded-For is stripped above; without this, a client
+        # sending e.g. "X-Real-IP: 1.2.3.4 " gets a distinct "ip:..." bucket
+        # per whitespace variant and evades the per-IP limit).
+        return x_real_ip.strip()
 
     # Cloudflare connecting IP
     cf_connecting_ip = request.headers.get("CF-Connecting-IP")
     if cf_connecting_ip:
-        return cf_connecting_ip
+        return cf_connecting_ip.strip()
 
     # Fallback to direct connection IP
     return request.client.host if request.client else "unknown"

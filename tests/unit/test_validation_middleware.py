@@ -341,6 +341,33 @@ class TestRateLimiting:
         ip = get_client_ip(request)
         assert ip == "203.0.113.195"
 
+    def test_get_client_ip_x_real_ip_strips_whitespace(self):
+        """X-Real-IP must be stripped like X-Forwarded-For.
+
+        Regression: only the X-Forwarded-For path normalized surrounding
+        whitespace, so a client sending "X-Real-IP: 1.2.3.4 " got a distinct
+        rate-limit key per whitespace variant — fragmenting buckets and
+        evading the per-IP limit. All three proxy headers must strip.
+        """
+        from app.core.rate_limit import get_client_ip
+
+        for padded in ("  198.51.100.1  ", "\t198.51.100.1", "198.51.100.1\n"):
+            request = Mock(spec=Request)
+            request.headers = {"X-Real-IP": padded}
+            request.client = Mock()
+            request.client.host = "192.168.1.100"
+            assert get_client_ip(request) == "198.51.100.1"
+
+    def test_get_client_ip_cloudflare_strips_whitespace(self):
+        """CF-Connecting-IP must be stripped like the other proxy headers."""
+        from app.core.rate_limit import get_client_ip
+
+        request = Mock(spec=Request)
+        request.headers = {"CF-Connecting-IP": "  203.0.113.195 "}
+        request.client = Mock()
+        request.client.host = "192.168.1.100"
+        assert get_client_ip(request) == "203.0.113.195"
+
     def test_get_user_id_with_api_key(self):
         """Test user ID with API key"""
         from app.core.rate_limit import get_user_id

@@ -3,7 +3,7 @@ Unit tests for Retrieval Service (HybridRetriever, ContextCompressor)
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 from app.services.retrieval import (
     HybridRetriever,
     RetrievalResult,

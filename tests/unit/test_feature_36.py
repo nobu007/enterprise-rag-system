@@ -11,8 +11,7 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
-from datetime import datetime
+from unittest.mock import MagicMock
 import sys
 
 

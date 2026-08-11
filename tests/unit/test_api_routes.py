@@ -6,12 +6,11 @@ and response format verification.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, AsyncMock
 from fastapi.testclient import TestClient
-from fastapi import HTTPException
 
 from app.api.routes.query import router, QueryRequest, QueryResponse
-from app.services.rag_pipeline import RAGResponse, RAGPipeline
+from app.services.rag_pipeline import RAGResponse
 from app.api.dependencies import get_rag_pipeline
 
 

@@ -3,13 +3,12 @@ Tests for validation middleware and security validation.
 """
 
 import pytest
-from fastapi import Request, HTTPException
+from fastapi import Request
 from starlette.testclient import TestClient
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, AsyncMock
 
 from app.main import app
 from app.core.security import SecurityValidator
-from app.middleware.validation import ValidationMiddleware
 
 
 class TestSecurityValidator:

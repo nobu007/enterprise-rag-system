@@ -3,7 +3,7 @@ Unit tests for RAG Pipeline
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock
 from app.services.rag_pipeline import RAGPipeline, RAGResponse
 from app.services.retrieval import RetrievalResult
 from app.services.reranker import Reranker

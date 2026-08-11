@@ -5,7 +5,7 @@ Unit tests for Cache Manager
 import pytest
 import json
 import time
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from app.core.cache import CacheManager
 

@@ -13,9 +13,8 @@ Tests cover:
 
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from fastapi import Request, HTTPException
-from starlette.types import ASGIApp
 
 from app.core.tenant import (
     Tenant,
@@ -32,9 +31,6 @@ from app.middleware.tenant import (
     get_tenant_context,
     require_tenant,
     require_active_tenant,
-    get_current_tenant,
-    get_required_tenant,
-    get_active_tenant,
     TENANT_ID_HEADER,
     API_KEY_HEADER,
 )

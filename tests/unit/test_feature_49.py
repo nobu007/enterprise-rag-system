@@ -6,17 +6,14 @@ Covers success cases, edge cases, error conditions, and integration with documen
 """
 
 import pytest
-import tempfile
 import os
-from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 from app.core.encryption import (
     DocumentEncryption,
     EncryptionResult,
     EncryptionError,
-    DecryptionError,
-    KeyDerivationError
+    DecryptionError
 )
 from app.services.document_loader import Document, DocumentLoader
 

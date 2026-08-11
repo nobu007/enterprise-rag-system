@@ -17,8 +17,7 @@ import json
 import asyncio
 import sys
 from contextlib import aclosing
-from unittest.mock import MagicMock, AsyncMock, patch, Mock
-from datetime import datetime
+from unittest.mock import MagicMock, AsyncMock, Mock
 from typing import AsyncGenerator
 from dataclasses import dataclass
 from typing import Dict, Any

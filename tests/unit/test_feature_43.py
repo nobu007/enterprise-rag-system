@@ -5,10 +5,6 @@ Tests for enhanced document parser with table and chart support.
 """
 
 import pytest
-import tempfile
-import os
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 
 from app.services.parser import (
     DocumentParser,
@@ -19,7 +15,6 @@ from app.services.parser import (
     FormattingParser
 )
 from app.services.document_loader_enhanced import EnhancedDocumentLoader
-from app.services.document_loader import Document as Document
 
 
 # ---------------------------------------------------------------------------

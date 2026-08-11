@@ -5,7 +5,6 @@ This module provides common fixtures and configuration for all tests.
 """
 
 import os
-import sys
 import pytest
 
 

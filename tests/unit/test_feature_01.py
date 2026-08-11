@@ -8,10 +8,10 @@ import pytest
 import logging
 from fastapi import Request
 from starlette.testclient import TestClient
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from app.main import app
-from app.middleware.request_id import RequestIDMiddleware, RequestContextFilter, get_request_id
+from app.middleware.request_id import RequestContextFilter, get_request_id
 
 
 class TestRequestContextFilter:

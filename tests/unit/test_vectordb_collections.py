@@ -5,7 +5,7 @@ Unit tests for VectorDB multi-collection support
 import pytest
 import tempfile
 import os
-from app.core.vectordb import FAISSVectorDB, SearchResult
+from app.core.vectordb import FAISSVectorDB
 
 
 @pytest.fixture
@@ -207,7 +207,6 @@ def test_vector_db_create_collection_on_demand(temp_vector_db, sample_vectors, s
 
 def test_vector_db_collection_persistence(temp_vector_db, sample_vectors, sample_metadata):
     """Test that collections are persisted and loaded correctly"""
-    import pickle
 
     # Add documents to multiple collections
     temp_vector_db.upsert(

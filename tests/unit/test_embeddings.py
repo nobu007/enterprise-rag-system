@@ -3,10 +3,9 @@ Unit tests for Embedding Generation Module
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock
 from app.core.embeddings import (
     OpenAIEmbeddings,
-    CohereEmbeddings,
     get_embedding_model,
     EmbeddingModel,
 )

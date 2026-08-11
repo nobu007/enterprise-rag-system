@@ -4,8 +4,6 @@ Unit tests for Circuit Breaker Pattern
 
 import pytest
 import asyncio
-import time
-from unittest.mock import Mock, patch
 from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,

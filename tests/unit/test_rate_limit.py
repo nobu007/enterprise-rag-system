@@ -5,10 +5,10 @@ Unit tests for rate limiting functionality
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from app.main import app
-from app.core.rate_limit import limiter, get_user_id
+from app.core.rate_limit import get_user_id
 
 
 class TestRateLimitIdentifier:

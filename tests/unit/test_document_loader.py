@@ -5,8 +5,6 @@ Unit tests for Document Loader and TextSplitter
 import pytest
 import tempfile
 import os
-from pathlib import Path
-from unittest.mock import patch, Mock
 
 from app.services.document_loader import Document, DocumentLoader, TextSplitter
 

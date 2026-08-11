@@ -5,7 +5,7 @@ Tests Celery tasks for asynchronous batch processing functionality.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from app.tasks.batch_tasks import process_document_batch
 
 

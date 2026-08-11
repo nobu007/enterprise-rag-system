@@ -10,11 +10,6 @@ This module tests document validation before ingestion to ensure:
 """
 
 import pytest
-import tempfile
-import os
-from pathlib import Path
-from typing import Dict, Any
-from unittest.mock import Mock, patch
 
 from app.services.validator import (
     DocumentValidator,
@@ -572,7 +567,6 @@ class TestValidationEdgeCases:
     def test_validate_none_content(self, validator):
         """Test validation handles None content gracefully."""
         # Create document with explicit doc_id to avoid hash generation on None
-        from dataclasses import replace
         doc = Document(content="dummy", metadata={"source": "test"}, doc_id="test-id")
         # Replace content with None after creation
         doc.content = None

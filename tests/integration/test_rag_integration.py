@@ -7,8 +7,7 @@ These tests verify end-to-end functionality of the RAG pipeline.
 import pytest
 import tempfile
 import os
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 
 @pytest.fixture

@@ -155,6 +155,14 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             except (json.JSONDecodeError, UnicodeDecodeError):
                 # Not JSON, skip validation for non-JSON requests
                 pass
+            except RecursionError:
+                # Deeply nested JSON exhausts the recursive validator's stack.
+                # Fail CLOSED (INV-VAL-001): a structure too deep to validate
+                # safely is rejected at the boundary rather than passed through
+                # unvalidated — otherwise an attacker can wrap any payload in
+                # enough nesting to abort the scan before the payload is reached.
+                logger.warning("Rejected deeply nested JSON (RecursionError during validation)")
+                raise HTTPException(400, detail="Request structure too deeply nested")
 
         except HTTPException:
             # Re-raise HTTPExceptions

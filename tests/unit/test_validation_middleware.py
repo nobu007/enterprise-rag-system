@@ -3,6 +3,7 @@ Tests for validation middleware and security validation.
 """
 
 import logging
+import sys
 
 import pytest
 from fastapi import HTTPException, Request
@@ -516,6 +517,29 @@ class TestValidationMiddlewareIsolated:
         response = client.post("/", json={"items": ["data `whoami`"]})
         assert response.status_code == 400
         assert "Command injection" in response.json()["detail"]
+
+    def test_deeply_nested_json_rejected_not_swallowed(self):
+        """Deeply nested JSON that exhausts the recursive validator is rejected (400),
+        not swallowed.
+
+        A payload nested past the interpreter's recursion limit is under the
+        content-length limit and parses via the json C scanner, but exhausts the
+        Python recursion stack of ``_validate_dict_recursive`` -> RecursionError.
+        Before the fail-closed fix this was caught by the generic ``except
+        Exception`` and swallowed, so the request passed through UNVALIDATED — an
+        attacker could wrap any payload in enough nesting to abort the scan
+        before it was reached (INV-VAL-001 boundary-rejection violation).
+        """
+        client = self._build_app()
+        depth = sys.getrecursionlimit() + 200  # comfortably exceeds the stack
+        payload = ('{"a":' * depth) + '1' + ('}' * depth)
+        response = client.post(
+            "/",
+            content=payload.encode(),
+            headers={"content-type": "application/json"},
+        )
+        assert response.status_code == 400
+        assert "too deeply nested" in response.json()["detail"].lower()
 
     def test_security_validation_disabled_passes(self):
         """With validation disabled, a malicious payload is allowed through."""

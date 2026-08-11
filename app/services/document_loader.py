@@ -252,7 +252,10 @@ class TextSplitter:
         
         # Try each separator in order
         for separator in self.separators:
-            if separator in text:
+            # Skip the empty separator: "" is always "in" text, but
+            # text.split("") raises ValueError. The fixed-size fallback
+            # below handles text with no usable separator (e.g. CJK).
+            if separator and separator in text:
                 parts = text.split(separator)
                 current_chunk = ""
                 

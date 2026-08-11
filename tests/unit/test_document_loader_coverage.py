@@ -155,3 +155,33 @@ class TestTextSplitterBranches:
         chunks = splitter.split_text("hello world")
         assert chunks
         assert "hello" in chunks[0]
+
+
+class TestTextSplitterSeparatorFreeRegression:
+    """Default separators end with "" (intended as a last-resort split).
+
+    `"" in text` is ALWAYS True, but `text.split("")` raises ValueError
+    ("empty separator"). For text containing none of the real separators
+    (no newline / ". " / space) -- e.g. CJK prose, a base64 blob, or a
+    long identifier -- the loop reached "" and crashed on the live
+    ingestion path instead of falling through to fixed-size chunking.
+    """
+
+    def test_cjk_text_splits_without_error(self):
+        # Japanese prose has no spaces/newlines -> hits the "" separator.
+        text = "これはスペースや改行を含まない長い日本語の文章です。" * 3
+        splitter = TextSplitter(chunk_size=100, chunk_overlap=20)
+        chunks = splitter.split_text(text)
+        assert chunks  # fixed-size fallback produced at least one chunk
+        assert chunks[0] == text[:100].strip()
+        # Joined chunks must preserve the original content.
+        assert text in "".join(chunks)
+
+    def test_single_long_token_uses_fixed_size_fallback(self):
+        splitter = TextSplitter(chunk_size=10, chunk_overlap=2)
+        text = "a" * 30  # no separator at all
+        chunks = splitter.split_text(text)
+        # Fixed-size fallback yields multiple bounded, overlapping chunks.
+        assert len(chunks) > 1
+        assert all(len(c) <= 10 for c in chunks)
+        assert chunks[0] == "a" * 10

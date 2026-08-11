@@ -28,7 +28,7 @@ def temp_vector_db():
         if os.path.exists(index_path + ".metadata.pkl"):
             os.remove(index_path + ".metadata.pkl")
         os.rmdir(temp_dir)
-    except:
+    except Exception:
         pass
 
 

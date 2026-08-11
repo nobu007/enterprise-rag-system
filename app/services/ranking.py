@@ -129,7 +129,10 @@ class QueryResultRanker:
                         from dateutil import parser as date_parser
                         last_updated = date_parser.parse(last_updated_str)
 
-                    days_old = (datetime.now() - last_updated).days
+                    # Adapt now() to the parsed tzinfo so tz-aware (e.g. 'Z' /
+                    # '+00:00') dates don't raise "naive - aware" TypeError,
+                    # while naive dates keep their existing behavior.
+                    days_old = (datetime.now(last_updated.tzinfo) - last_updated).days
                     # Exponential decay with 90-day half-life
                     # Fresh documents (0 days) = 1.0, 90 days old = 0.5, 180 days = 0.25
                     freshness = exp(-days_old / 90.0) if days_old >= 0 else 1.0
@@ -155,7 +158,9 @@ class QueryResultRanker:
                             created_at = None
 
                     if created_at:
-                        days_old = (datetime.now() - created_at).days
+                        # See last_updated: adapt now() to parsed tzinfo to
+                        # avoid naive-vs-aware TypeError on tz-aware dates.
+                        days_old = (datetime.now(created_at.tzinfo) - created_at).days
                         freshness = exp(-days_old / 90.0) if days_old >= 0 else 1.0
             except Exception as e:
                 logger.warning(f"Failed to parse created_at for freshness: {e}")

@@ -39,7 +39,15 @@ class TestFreshnessLastUpdated:
     """Cover the ``last_updated`` freshness branch (L118-141)."""
 
     def test_last_updated_iso_with_z_suffix(self):
-        """ISO date with trailing Z parses via fromisoformat (L126)."""
+        """tz-aware ('Z') ISO date decays correctly via fromisoformat (L126).
+
+        Regression: a trailing-'Z' / '+00:00' date parsed to a tz-aware
+        datetime used to crash on ``datetime.now() - aware`` (TypeError),
+        which the ValueError/TypeError handler swallowed by falling back to
+        the 0.5 default -- defeating freshness decay for the most common
+        ISO shape. 2024-01-15 is ~900+ days old, so exp(-days/90) ~= 0.0,
+        nowhere near the 0.5 fallback. The old range-only assert hid this.
+        """
         ranker = QueryResultRanker()
         features = ranker.extract_features(
             {
@@ -48,7 +56,7 @@ class TestFreshnessLastUpdated:
             },
             query_length=2,
         )
-        assert 0.0 <= features['freshness'] <= 1.0
+        assert 0.0 <= features['freshness'] < 0.05
 
     def test_last_updated_dateutil_fallback(self):
         """Non-ISO date falls back to dateutil.parser (L127-130)."""
@@ -93,6 +101,24 @@ class TestFreshnessLastUpdated:
 
 class TestFreshnessCreatedAtErrors:
     """Cover created_at error paths (L150-155, L160-162)."""
+
+    def test_created_at_iso_with_z_suffix(self):
+        """tz-aware ('Z') created_at decays correctly (L149/L158).
+
+        Same naive-vs-aware regression as last_updated: the Z-suffix parses
+        to a tz-aware datetime, and the old ``datetime.now() - created_at``
+        raised TypeError that the outer handler swallowed into the 0.5
+        fallback. ~900+ days old -> exp(-days/90) ~= 0.0, not 0.5.
+        """
+        ranker = QueryResultRanker()
+        features = ranker.extract_features(
+            {
+                'score': 0.5,
+                'metadata': {'created_at': '2024-01-15T00:00:00Z'},
+            },
+            query_length=2,
+        )
+        assert 0.0 <= features['freshness'] < 0.05
 
     def test_created_at_dateutil_fallback(self):
         """Non-ISO created_at falls back to dateutil (L150-155)."""

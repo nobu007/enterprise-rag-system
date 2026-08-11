@@ -7,6 +7,7 @@ This module defines API endpoints for querying the RAG system.
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from openai import AsyncOpenAI
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from app.services.rag_pipeline import RAGPipeline
@@ -304,7 +305,7 @@ async def stream_query(
     request: Request,
     stream_req: StreamingQueryRequest,
     pipeline: RAGPipeline = Depends(get_rag_pipeline),
-    llm_client = Depends(get_llm_client)
+    llm_client: AsyncOpenAI = Depends(get_llm_client)
 ) -> StreamingResponse:
     """
     Stream RAG query response using Server-Sent Events (SSE) / Server-Sent Events (SSE) を使用してRAGクエリレスポンスをストリーミングします

@@ -134,7 +134,7 @@ class TestRequestIDMiddleware:
 
         # This will fail due to RAG pipeline not initialized, but we're testing headers
         try:
-            response = client.post(
+            client.post(
                 "/api/v1/query/",
                 headers={"X-Request-ID": custom_request_id},
                 json={"query": "test"}
@@ -209,13 +209,12 @@ class TestRequestIDLoggingIntegration:
         custom_request_id = "log-test-123"
 
         # Make request
-        response = client.get(
+        client.get(
             "/",
             headers={"X-Request-ID": custom_request_id}
         )
 
-        # Check logs contain request ID
-        log_output = log_capture.getvalue()
+        # Check logs contain request ID (not asserted — async timing unreliable)
         # Note: This might not work perfectly due to async nature,
         # but the filter should be attached
 

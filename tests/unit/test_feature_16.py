@@ -505,7 +505,6 @@ class TestIntegration:
 
         # Execute full stream (with limit)
         full_response = ""
-        final_sources = None
         chunk_count = 0
 
         async for chunk in streaming_service.stream_query_with_retrieval(
@@ -517,8 +516,6 @@ class TestIntegration:
         ):
             if chunk.content:
                 full_response += chunk.content
-            if chunk.is_done:
-                final_sources = chunk.sources
             chunk_count += 1
             if chunk_count >= 3:  # Collect first few chunks
                 break

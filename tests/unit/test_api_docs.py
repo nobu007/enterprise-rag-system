@@ -108,9 +108,7 @@ class TestAPIDocumentation:
         assert post_details is not None
         assert "summary" in post_details
 
-        # Check /ingest/status endpoint (optional)
-        status_path = schema["paths"].get("/api/v1/ingest/status/{task_id}")
-        # Stats endpoint may not exist, so just verify ingest is documented
+        # /ingest/status endpoint is optional (may not exist); ingest above is verified
 
     def test_health_endpoint_documentation(self, client):
         """Test health endpoints have documentation / ヘルスエンドポイントがドキュメントを持っていることをテスト"""

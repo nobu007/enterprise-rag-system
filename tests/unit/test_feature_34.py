@@ -242,7 +242,7 @@ class TestTenantManager:
 
     def test_get_tenant(self, manager):
         """Test retrieving a tenant"""
-        created = manager.create_tenant(tenant_id="t1", name="Test")
+        manager.create_tenant(tenant_id="t1", name="Test")
         retrieved = manager.get_tenant("t1")
 
         assert retrieved is not None
@@ -436,7 +436,7 @@ class TestTenantMiddleware:
             response = MagicMock()
             return response
 
-        response = await middleware.dispatch(request, call_next)
+        await middleware.dispatch(request, call_next)
 
         # Verify tenant context was set
         assert hasattr(request.state, "tenant_context")

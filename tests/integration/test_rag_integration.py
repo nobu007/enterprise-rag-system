@@ -80,9 +80,6 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
         max_tokens=500
     )
 
-    # Test query
-    question = "What is machine learning?"
-
     # Note: This will fail if no documents are indexed
     # In real integration tests, you would first ingest documents
     assert pipeline is not None

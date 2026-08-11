@@ -2,13 +2,19 @@
 Tests for validation middleware and security validation.
 """
 
+import logging
+
 import pytest
-from fastapi import Request
+from fastapi import HTTPException, Request
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 from starlette.testclient import TestClient
 from unittest.mock import Mock, AsyncMock
 
 from app.main import app
 from app.core.security import SecurityValidator
+from app.middleware.validation import ValidationMiddleware
 
 
 class TestSecurityValidator:
@@ -391,3 +397,110 @@ class TestIntegration:
         # (depending on configuration)
         # At minimum, the request should succeed
         assert response.status_code == 200
+
+
+class TestValidationMiddlewareIsolated:
+    """Exercise ValidationMiddleware branches without the full app.
+
+    The integration tests above drive the real app (rate limiting, RAG
+    pipeline, etc.), which obscures the middleware's own security branches.
+    These tests wrap a minimal Starlette app in ValidationMiddleware so every
+    rejection path returns its intended status code, and call the internal
+    async helpers directly for branches that cannot be triggered over HTTP.
+    """
+
+    @staticmethod
+    def _build_app(**middleware_kwargs) -> TestClient:
+        """Minimal Starlette app with ValidationMiddleware and one endpoint."""
+        async def endpoint(request: Request) -> JSONResponse:
+            return JSONResponse({"ok": True})
+
+        application = Starlette(routes=[
+            Route("/", endpoint, methods=["GET", "POST", "PUT", "PATCH"]),
+        ])
+        application.add_middleware(ValidationMiddleware, **middleware_kwargs)
+        return TestClient(application)
+
+    @staticmethod
+    def _make_middleware(**kwargs) -> ValidationMiddleware:
+        """Construct a middleware with a no-op ASGI app for direct method tests."""
+        async def dummy(scope, receive, send):
+            return None
+
+        return ValidationMiddleware(dummy, **kwargs)
+
+    def test_request_too_large_returns_413(self):
+        """Content-Length over max_request_size is rejected with 413 (DoS guard)."""
+        client = self._build_app(max_request_size=10)
+        response = client.post("/", json={"q": "x" * 100})
+        assert response.status_code == 413
+        assert "too large" in response.json()["detail"].lower()
+
+    async def test_invalid_content_length_returns_400(self):
+        """A non-integer Content-Length is rejected with 400."""
+        mw = self._make_middleware()
+        request = Mock(spec=Request)
+        request.headers = {"content-length": "not-a-number"}
+        with pytest.raises(HTTPException) as exc_info:
+            await mw._validate_content_length(request)
+        assert exc_info.value.status_code == 400
+        assert "Invalid Content-Length" in exc_info.value.detail
+
+    def test_command_injection_blocked(self):
+        """Command-injection payload is rejected with 400 after XSS/SQL/path pass."""
+        client = self._build_app()
+        response = client.post("/", json={"q": "data `whoami`"})
+        assert response.status_code == 400
+        assert "Command injection" in response.json()["detail"]
+
+    def test_list_value_recursion_validated(self):
+        """Malicious strings nested in a JSON list are reached via list recursion."""
+        client = self._build_app()
+        response = client.post("/", json={"items": ["data `whoami`"]})
+        assert response.status_code == 400
+        assert "Command injection" in response.json()["detail"]
+
+    def test_security_validation_disabled_passes(self):
+        """With validation disabled, a malicious payload is allowed through."""
+        client = self._build_app(enable_security_validation=False)
+        response = client.post("/", json={"q": "data `whoami`"})
+        assert response.status_code == 200
+
+    def test_non_json_body_passes_validation(self):
+        """Non-JSON request bodies skip security validation (no crash)."""
+        client = self._build_app()
+        response = client.post(
+            "/",
+            content=b"this is not json",
+            headers={"content-type": "text/plain"},
+        )
+        assert response.status_code == 200
+
+    def test_empty_body_skips_validation(self):
+        """An empty POST body returns early before any security scan."""
+        client = self._build_app()
+        response = client.post("/", content=b"")
+        assert response.status_code == 200
+
+    def test_suspicious_header_logged(self, caplog):
+        """Recognized spoofing headers are logged without blocking the request."""
+        client = self._build_app()
+        with caplog.at_level(logging.INFO):
+            response = client.get("/", headers={"X-Forwarded-Host": "evil.example"})
+        assert response.status_code == 200
+        assert any(
+            "Suspicious header" in record.message for record in caplog.records
+        )
+
+    async def test_unexpected_body_error_is_logged_not_raised(self, caplog):
+        """Unexpected (non-HTTP) errors reading the body are swallowed, not blocking."""
+        mw = self._make_middleware()
+        request = Mock(spec=Request)
+        request.body = AsyncMock(side_effect=RuntimeError("boom"))
+        with caplog.at_level(logging.ERROR):
+            result = await mw._validate_request_body(request)
+        assert result is None
+        assert any(
+            "Error validating request body" in record.message
+            for record in caplog.records
+        )

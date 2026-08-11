@@ -11,7 +11,7 @@ This middleware provides:
 
 import json
 import logging
-from typing import Dict, Any
+from typing import Any
 
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -150,7 +150,12 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             # Try to parse as JSON
             try:
                 data = json.loads(body.decode())
-                if isinstance(data, dict):
+                # Validate any structured JSON payload, not just objects. A
+                # top-level JSON array (e.g. a batch-style body) previously
+                # skipped _validate_request_data entirely, so malicious strings
+                # inside it passed the boundary UNVALIDATED — the same
+                # validator-skip class as the deep-nesting case (INV-VAL-001).
+                if isinstance(data, (dict, list)):
                     await self._validate_request_data(data, request)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 # Not JSON, skip validation for non-JSON requests
@@ -171,7 +176,7 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             logger.error(f"Error validating request body: {e}")
             # Don't block on unexpected errors, log and continue
 
-    async def _validate_request_data(self, data: Dict[str, Any], request: Request):
+    async def _validate_request_data(self, data: Any, request: Request):
         """
         Validate request data for security threats.
 

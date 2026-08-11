@@ -518,6 +518,21 @@ class TestValidationMiddlewareIsolated:
         assert response.status_code == 400
         assert "Command injection" in response.json()["detail"]
 
+    def test_top_level_list_body_validated(self):
+        """A malicious payload sent as a *top-level* JSON array is rejected.
+
+        Regression: ``_validate_request_body`` only entered the recursive
+        validator when ``isinstance(data, dict)``, so a body that was itself a
+        JSON array skipped validation entirely and passed through UNVALIDATED
+        — the same boundary-skip class as the deep-nesting case (INV-VAL-001).
+        A batch-style array body is a realistic shape, so the strings inside it
+        must still be scanned. Before the fix this returned 200.
+        """
+        client = self._build_app()
+        response = client.post("/", json=["data `whoami`"])
+        assert response.status_code == 400
+        assert "Command injection" in response.json()["detail"]
+
     def test_deeply_nested_json_rejected_not_swallowed(self):
         """Deeply nested JSON that exhausts the recursive validator is rejected (400),
         not swallowed.

@@ -373,8 +373,16 @@ class DocumentParser:
         if "|" in line:
             # Markdown table
             cells = [cell.strip() for cell in line.split("|")]
-            # Remove empty cells at start/end
-            cells = [c for c in cells if c or not cells.index(c) in [0, len(cells) - 1]]
+            # split("|") on a "|a|b|" row yields empty strings at the start
+            # and end. Strip those boundary empties only -- empty cells in the
+            # middle carry meaning for column alignment and must be preserved.
+            # (The previous cells.index(c) filter dropped every empty cell
+            # whose first occurrence sat at a boundary, silently corrupting
+            # sparse rows by shifting columns.)
+            while cells and cells[0] == "":
+                cells.pop(0)
+            while cells and cells[-1] == "":
+                cells.pop()
             return cells
         elif "\t" in line:
             # TSV

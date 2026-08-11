@@ -192,3 +192,39 @@ class TestConfidenceEdge:
             llm_model="gpt-4",
         )
         assert pipeline._calculate_confidence([], "answer") == 0.0
+
+    def test_confidence_clamped_when_top_score_negative(
+        self, retriever, llm_client
+    ):
+        """A negative top retrieval score must not yield a negative confidence.
+
+        Regression: ``_calculate_confidence`` weighted the raw top score by
+        0.5 but only clamped the UPPER bound (``min(confidence, 1.0)``). The
+        top score is a FAISS inner-product / cosine similarity over
+        L2-normalized vectors, so it ranges over [-1, 1] (vectordb.py uses
+        ``IndexFlatIP``). A query whose every retrieved doc is dissimilar
+        (cosine < 0) produced a negative top_score, and ``0.5 * negative``
+        drove ``confidence`` below zero — flowing a nonsensical negative
+        confidence to the API response. The lower-bound clamp mirrors
+        ranking.py's final clamp (``max(0.0, min(1.0, ...))``). Before the
+        fix this returned -0.295.
+        """
+        pipeline = RAGPipeline(
+            retriever=retriever,
+            llm_client=llm_client,
+            llm_model="gpt-4",
+        )
+        negative_results = [
+            RetrievalResult(
+                document="Dissimilar doc, opposite vector direction.",
+                score=-0.6,  # realistic cosine for a dissimilar vector
+                metadata={},
+                source="doc.pdf",
+            ),
+        ]
+        confidence = pipeline._calculate_confidence(
+            negative_results, "short"
+        )
+        # top_score=-0.6, high_score_count=0, answer_length_factor=0.025:
+        # pre-fix min(-0.295, 1.0) = -0.295 (negative!); post-fix -> 0.0.
+        assert confidence == 0.0

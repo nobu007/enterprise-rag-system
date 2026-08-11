@@ -180,8 +180,18 @@ Answer:"""
             0.3 * (high_score_count / len(retrieval_results)) +
             0.2 * answer_length_factor
         )
-        
-        return min(confidence, 1.0)
+
+        # Clamp to [0, 1] on BOTH bounds. ``top_score`` is a raw retrieval
+        # score, and the FAISS path (vectordb.py uses IndexFlatIP over
+        # L2-normalized vectors) returns a cosine similarity ranging over
+        # [-1, 1]. A query whose every retrieved doc is dissimilar (cosine
+        # < 0) yields a negative top_score, and 0.5 * negative drove
+        # ``confidence`` below zero — the previous ``min(confidence, 1.0)``
+        # only enforced the upper bound, so a nonsensical negative
+        # confidence reached the API response. The lower-bound clamp mirrors
+        # ranking.py's final clamp (max(0.0, min(1.0, ...))) — the same
+        # asymmetric-clamp defect the ranking feature work removed.
+        return max(0.0, min(confidence, 1.0))
     
     async def query(
         self,

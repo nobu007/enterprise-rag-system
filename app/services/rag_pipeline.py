@@ -10,7 +10,7 @@ import time
 from openai import AsyncOpenAI
 
 from app.core.config import get_settings
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_for_log
 from app.core import metrics
 from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError
 from app.services.retrieval import HybridRetriever, RetrievalResult, ContextCompressor
@@ -231,16 +231,16 @@ Answer:"""
             cached_result = self.cache.get(cache_key)
 
             if cached_result:
-                logger.info(f"Cache hit for query: {question[:50]}...")
+                logger.info(f"Cache hit for query: {sanitize_for_log(question[:50])}...")
                 metrics.cache_hits.labels(collection=collection).inc()
                 # Reconstruct RAGResponse from cached dict
                 return RAGResponse(**cached_result)
             else:
-                logger.debug(f"Cache miss for query: {question[:50]}...")
+                logger.debug(f"Cache miss for query: {sanitize_for_log(question[:50])}...")
                 metrics.cache_misses.labels(collection=collection).inc()
 
         # Step 1: Retrieve relevant documents
-        logger.debug(f"Retrieving documents for: {question} from collection: {collection}")
+        logger.debug(f"Retrieving documents for: {sanitize_for_log(question)} from collection: {collection}")
 
         # Track retrieval metrics
         retrieval_start = time.time()
@@ -334,7 +334,7 @@ Answer:"""
         # Cache the response
         if self.cache and cache_key:
             self.cache.set(cache_key, response)
-            logger.debug(f"Cached response for query: {question[:50]}...")
+            logger.debug(f"Cached response for query: {sanitize_for_log(question[:50])}...")
 
         return response
     
@@ -347,7 +347,7 @@ Answer:"""
                 response = await self.query(question, top_k=top_k, collection=collection, **kwargs)
                 responses.append(response)
             except Exception as e:
-                logger.error(f"Error processing question '{question}': {e}")
+                logger.error(f"Error processing question '{sanitize_for_log(question)}': {e}")
                 responses.append(RAGResponse(
                     answer=f"Error: {str(e)}",
                     sources=[],

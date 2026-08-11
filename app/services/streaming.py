@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import time
 
 from openai import AsyncOpenAI
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_for_log
 from app.core.config import get_settings
 
 logger = get_logger(__name__)
@@ -136,7 +136,7 @@ Answer:"""
         try:
             prompt = self._build_prompt(query, context)
 
-            logger.info(f"Starting streaming response for query: {query[:100]}...")
+            logger.info(f"Starting streaming response for query: {sanitize_for_log(query[:100])}...")
 
             # Track token usage
             total_tokens = 0
@@ -233,7 +233,7 @@ Answer:"""
             StreamingResponseError: If retrieval or streaming fails
         """
         try:
-            logger.info(f"Starting RAG streaming for query: {query[:100]}...")
+            logger.info(f"Starting RAG streaming for query: {sanitize_for_log(query[:100])}...")
 
             # Step 1: Perform retrieval
             logger.info("Step 1: Retrieving relevant documents...")

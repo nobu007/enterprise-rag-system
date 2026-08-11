@@ -17,6 +17,7 @@ import logging
 import sys
 from typing import Optional
 import os
+import re
 
 
 class RequestIDFilter(logging.Filter):
@@ -90,3 +91,39 @@ def get_logger(name: str) -> logging.Logger:
         Logger instance
     """
     return logging.getLogger(name)
+
+
+# C0 control characters + DEL. Client-controlled values (query text, request
+# IDs, ...) that reach log records can carry CR/LF and forge extra log lines
+# (CWE-117 log injection). The validation middleware scans request bodies for
+# XSS/SQL/path/command payloads but NOT for control characters, so a query like
+# "q\n2000-01-01 INFO admin login ok" otherwise flows through to the
+# rag_pipeline / streaming log calls unstripped. sanitize_for_log() neutralises
+# only the log representation; the underlying value is left untouched.
+_CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
+_CONTROL_CHAR_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def sanitize_for_log(value: object) -> str:
+    """Escape control characters so client-controlled text is safe in a log line.
+
+    Returns ``str(value)`` with C0 control characters and DEL rendered as
+    visible escape sequences (newline -> ``\\n``, carriage return -> ``\\r``,
+    tab -> ``\\t``, others -> ``\\xNN``). CR/LF — the line-forging vectors — are
+    neutralised, so the result can be embedded in a log message without
+    injecting a fake subsequent line. Only the returned string is affected; the
+    passed value is not mutated.
+
+    Use this whenever an attacker-controlled string (query body, header, cache
+    key, ...) is interpolated into a log message.
+    """
+    text = str(value)
+    # Fast path: the overwhelming majority of values contain no control chars.
+    if not _CONTROL_CHAR_PATTERN.search(text):
+        return text
+    return _CONTROL_CHAR_PATTERN.sub(
+        lambda match: _CONTROL_CHAR_ESCAPES.get(
+            match.group(0), f"\\x{ord(match.group(0)):02x}"
+        ),
+        text,
+    )

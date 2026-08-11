@@ -43,7 +43,16 @@ class Settings(BaseSettings):
     embedding_dimension: int = Field(1536)
 
     # Search Configuration
-    hybrid_search_alpha: float = Field(0.5)
+    # ``hybrid_search_alpha`` is the convex-combination weight HybridRetriever
+    # applies in its RRF fusion: ``alpha * semantic + (1 - alpha) * keyword``
+    # (retrieval.py HybridRetriever.__init__). The retriever docstring bounds it
+    # to ``[0, 1]`` ("0=keyword only, 1=semantic only"). Outside that range one
+    # signal inverts -- e.g. alpha=1.5 makes the keyword term (1-1.5=-0.5)
+    # *subtract*, so a keyword-matching doc scores LOWER and retrieval ranking
+    # is silently corrupted. Bound it here so a misconfigured
+    # HYBRID_SEARCH_ALPHA fails fast at Settings load instead of producing
+    # inverted-signal retrieval.
+    hybrid_search_alpha: float = Field(0.5, ge=0.0, le=1.0)
     top_k_results: int = Field(5)
     reranker_model: str = Field(
         "cross-encoder/ms-marco-MiniLM-L-12-v2",

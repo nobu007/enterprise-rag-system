@@ -11,6 +11,7 @@ invariant that makes that removal safe.
 """
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 
@@ -53,6 +54,20 @@ class TestEnvVarCaseInsensitive:
 
     def test_float_field_read_from_upper_env(self, monkeypatch):
         assert _settings(monkeypatch, HYBRID_SEARCH_ALPHA="0.25").hybrid_search_alpha == 0.25
+
+    @pytest.mark.parametrize("bad_alpha", ["1.5", "-0.5", "2", "-1"])
+    def test_hybrid_search_alpha_rejected_out_of_range(self, monkeypatch, bad_alpha):
+        # hybrid_search_alpha is a convex-combination weight in HybridRetriever
+        # RRF fusion (alpha*semantic + (1-alpha)*keyword); outside [0, 1] one
+        # signal inverts (alpha=1.5 -> keyword term = -0.5, keyword matches
+        # reduce the score). The Field must reject it at Settings load rather
+        # than let inverted-signal retrieval ranking through.
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, HYBRID_SEARCH_ALPHA=bad_alpha)
+
+    @pytest.mark.parametrize("good_alpha", ["0", "0.0", "1", "1.0", "0.25"])
+    def test_hybrid_search_alpha_accepted_in_range(self, monkeypatch, good_alpha):
+        assert _settings(monkeypatch, HYBRID_SEARCH_ALPHA=good_alpha).hybrid_search_alpha == float(good_alpha)
 
 
 class TestEnvBindingAcrossFieldGroups:

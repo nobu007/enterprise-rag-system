@@ -1,0 +1,151 @@
+"""Coverage-focused tests for app/core/cache.py.
+
+Targets branches the existing test_cache.py does not reach: __init__
+password-URL construction; the enabled-but-Redis-unavailable state
+(L1 active, L2 None) for get/set/delete/get_stats; set() dataclass
+conversion; and the whole invalidate_version method (disabled, matched
+keys, no keys, redis error, L1-only) plus the clear_collection and
+flush_all redis-error + L1-only branches.
+"""
+import json
+from dataclasses import dataclass
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app.core.cache import CacheManager
+
+
+@pytest.fixture
+def mock_redis():
+    mock = MagicMock()
+    mock.ping.return_value = True
+    mock.get.return_value = None
+    mock.setex.return_value = True
+    mock.delete.return_value = True
+    mock.flushdb.return_value = True
+    mock.db = 0
+    mock.info.return_value = {
+        "db0": {"keys": 10},
+        "used_memory_human": "1M",
+    }
+    return mock
+
+
+@pytest.fixture
+def enabled_cache(mock_redis):
+    with patch("app.core.cache.redis.from_url", return_value=mock_redis):
+        manager = CacheManager(enabled=True)
+        manager.redis_client = mock_redis
+        return manager
+
+
+@pytest.fixture
+def no_redis_cache():
+    # enabled=True but Redis unavailable -> L1 only (redis_client=None).
+    with patch(
+        "app.core.cache.redis.from_url",
+        side_effect=ConnectionError("no redis"),
+    ):
+        manager = CacheManager(enabled=True)
+    assert manager.redis_client is None
+    return manager
+
+
+@pytest.fixture
+def disabled_cache():
+    return CacheManager(enabled=False)
+
+
+@dataclass
+class _Sample:
+    a: int = 1
+    b: str = "x"
+
+
+class TestInitPasswordUrl:
+    def test_password_embedded_in_redis_url(self, mock_redis):
+        with patch(
+            "app.core.cache.redis.from_url", return_value=mock_redis
+        ) as fu:
+            CacheManager(redis_password="secret", enabled=True)
+        url = fu.call_args[0][0]
+        assert ":secret@" in url
+
+
+class TestL1OnlyState:
+    """enabled + redis_client=None (L1 active, L2 down)."""
+
+    def test_get_returns_none_on_miss(self, no_redis_cache):
+        assert no_redis_cache.get("absent_key") is None
+
+    def test_set_stores_in_l1_only(self, no_redis_cache):
+        assert no_redis_cache.set("k", {"v": 1}) is True
+        value, _ts = no_redis_cache.l1_cache["k"]
+        assert value == {"v": 1}
+
+    def test_delete_clears_l1_only(self, no_redis_cache):
+        no_redis_cache.set("k", {"v": 1})
+        assert no_redis_cache.delete("k") is True
+        assert "k" not in no_redis_cache.l1_cache
+
+    def test_get_stats_marks_l2_disabled(self, no_redis_cache):
+        stats = no_redis_cache.get_stats()
+        assert stats["l2"] == {"enabled": False}
+
+
+class TestSetDataclass:
+    def test_set_converts_dataclass_to_dict(
+        self, enabled_cache, mock_redis
+    ):
+        enabled_cache.set("dc", _Sample(a=5, b="z"))
+        payload = json.loads(mock_redis.setex.call_args[0][2])
+        assert payload == {"a": 5, "b": "z"}
+
+
+class TestInvalidateVersion:
+    def test_disabled_returns_false(self, disabled_cache):
+        assert disabled_cache.invalidate_version("v1") is False
+
+    def test_deletes_matched_keys(self, enabled_cache, mock_redis):
+        mock_redis.scan_iter.return_value = iter(["k1", "k2"])
+        assert enabled_cache.invalidate_version("v1") is True
+        mock_redis.delete.assert_called_once_with("k1", "k2")
+
+    def test_no_keys_skips_delete(self, enabled_cache, mock_redis):
+        mock_redis.scan_iter.return_value = iter([])
+        assert enabled_cache.invalidate_version("v1") is True
+        mock_redis.delete.assert_not_called()
+
+    def test_redis_error_returns_false(self, enabled_cache, mock_redis):
+        mock_redis.scan_iter.side_effect = Exception("scan fail")
+        assert enabled_cache.invalidate_version("v1") is False
+
+    def test_l1_only_clears_and_returns_true(self, no_redis_cache):
+        no_redis_cache.set("k", {"v": 1})
+        assert no_redis_cache.invalidate_version("v1") is True
+        assert no_redis_cache.l1_cache == {}
+
+
+class TestClearCollectionBranches:
+    def test_redis_error_returns_false(self, enabled_cache, mock_redis):
+        mock_redis.scan_iter.side_effect = Exception("scan fail")
+        assert enabled_cache.clear_collection("p") is False
+
+    def test_l1_only_filters_by_prefix(self, no_redis_cache):
+        no_redis_cache.set("p:1", {"v": 1})
+        no_redis_cache.set("other", {"v": 2})
+        assert no_redis_cache.clear_collection("p:") is True
+        assert "p:1" not in no_redis_cache.l1_cache
+        assert "other" in no_redis_cache.l1_cache
+
+
+class TestFlushAllBranches:
+    def test_redis_error_returns_false(self, enabled_cache, mock_redis):
+        mock_redis.flushdb.side_effect = Exception("flush fail")
+        assert enabled_cache.flush_all() is False
+
+    def test_l1_only_clears_and_returns_true(self, no_redis_cache):
+        no_redis_cache.set("k", {"v": 1})
+        assert no_redis_cache.flush_all() is True
+        assert no_redis_cache.l1_cache == {}

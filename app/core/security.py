@@ -20,17 +20,23 @@ class SecurityValidator:
     """
 
     # SQL injection patterns
+    # Every span-quantifier (.* between two SQL tokens) carries inline (?s)=DOTALL
+    # so '.' matches newlines. Without it, a payload split across lines — valid SQL,
+    # since SQL treats newlines as whitespace — evades the rule (e.g. "UNION\nSELECT").
+    # The block-comment rule below was the first sibling fixed; the keyword-span rules
+    # are DOTALL'd too for consistency (an unfixed sibling is exactly how this bug class
+    # recurs).
     SQL_INJECTION_PATTERNS = [
-        r"(\bunion\b.*\bselect\b)",
-        r"(\bor\b.*1\s*=\s*1)",
-        r"(\band\b.*1\s*=\s*1)",
+        r"(?s)(\bunion\b.*\bselect\b)",
+        r"(?s)(\bor\b.*1\s*=\s*1)",
+        r"(?s)(\band\b.*1\s*=\s*1)",
         r"('\s+or\s+')",  # ' OR ' pattern
         r"('\s+and\s+')",  # ' AND ' pattern
-        r"(\bdrop\b.*\btable\b)",
-        r"(;.*\bexec\b)",
-        r"(\binsert\b.*\binto\b)",
-        r"(\bdelete\b.*\bfrom\b)",
-        r"(\bupdate\b.*\bset\b)",
+        r"(?s)(\bdrop\b.*\btable\b)",
+        r"(?s)(;.*\bexec\b)",
+        r"(?s)(\binsert\b.*\binto\b)",
+        r"(?s)(\bdelete\b.*\bfrom\b)",
+        r"(?s)(\bupdate\b.*\bset\b)",
         r"(--)",  # SQL comment
         r"(?s)(/\*.*\*/)",  # SQL comment (?s)=DOTALL: '.' matches newline so multi-line block comments are caught
         r"(\bor\b\s+\d+\s*=\s*\d+)",

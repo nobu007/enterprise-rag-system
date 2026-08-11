@@ -53,6 +53,32 @@ class TestSecurityValidator:
         multiline_payload = "SELECT/*\n*/1"
         assert validator.detect_sql_injection(multiline_payload) is True
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "x UNION\nSELECT y",       # union...select
+            "x; DROP\nTABLE y",        # drop...table
+            "x;\nEXEC(y)",             # ;...exec
+            "x INSERT\nINTO y",        # insert...into
+            "x DELETE\nFROM y",        # delete...from
+            "x UPDATE\nSET y",         # update...set
+        ],
+    )
+    def test_detect_sql_injection_multiline_keyword_span_bypass(self, payload):
+        r"""Regression: a newline between two SQL tokens must not evade detection.
+
+        Sibling of the block-comment bypass test above. SQL treats newlines as
+        whitespace, so "UNION\nSELECT" / "DROP\nTABLE" etc. are valid injections,
+        yet every keyword-span rule uses .* which (without DOTALL) stops at \n.
+        The block-comment rule was the first sibling given inline (?s); these
+        keyword-span rules must be DOTALL'd too, or an attacker splits any
+        two-token payload across a line to slip past detect_sql_injection — and
+        thus past ValidationMiddleware._validate_value (a live request boundary).
+        Each payload isolates a single rule and carries no other SQL marker.
+        """
+        validator = SecurityValidator()
+        assert validator.detect_sql_injection(payload) is True
+
     def test_detect_sql_injection_false(self):
         """Test SQL injection detection with safe input"""
         validator = SecurityValidator()

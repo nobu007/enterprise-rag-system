@@ -116,7 +116,12 @@ class Settings(BaseSettings):
     rate_limit_burst: int = Field(10)
 
     # Concurrency Control
-    max_concurrent_requests: int = Field(10)
+    # ``max_concurrent_requests`` feeds ``ConcurrencyLimiter`` (main.py wiring),
+    # whose constructor rejects ``max_concurrent < 1`` with ValueError
+    # (concurrency.py). Bound it here so a misconfigured MAX_CONCURRENT_REQUESTS
+    # (0 / negative) fails fast at Settings load with a clear ValidationError
+    # instead of crashing deep in lifespan init.
+    max_concurrent_requests: int = Field(10, ge=1)
 
     # Redis Cache Configuration
     redis_host: str = Field("localhost")

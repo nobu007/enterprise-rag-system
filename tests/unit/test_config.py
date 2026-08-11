@@ -88,6 +88,20 @@ class TestEnvVarCaseInsensitive:
         result = _settings(monkeypatch, RANKING_KEYWORD_WEIGHT=good)
         assert result.ranking_keyword_weight == float(good)
 
+    @pytest.mark.parametrize("bad_concurrency", ["0", "-1", "-5"])
+    def test_max_concurrent_requests_rejected_below_one(self, monkeypatch, bad_concurrency):
+        # max_concurrent_requests feeds ConcurrencyLimiter, whose constructor
+        # rejects max_concurrent < 1 with ValueError (concurrency.py). The
+        # Field must enforce the same lower bound at Settings load so a
+        # misconfigured MAX_CONCURRENT_REQUESTS (0 / negative) fails fast
+        # with a clear ValidationError instead of crashing lifespan init.
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, MAX_CONCURRENT_REQUESTS=bad_concurrency)
+
+    @pytest.mark.parametrize("good_concurrency", ["1", "10", "100"])
+    def test_max_concurrent_requests_accepted_at_least_one(self, monkeypatch, good_concurrency):
+        assert _settings(monkeypatch, MAX_CONCURRENT_REQUESTS=good_concurrency).max_concurrent_requests == int(good_concurrency)
+
 
 class TestEnvBindingAcrossFieldGroups:
     """Env binding must cover every field group and type, so dropping

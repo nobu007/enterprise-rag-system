@@ -149,3 +149,41 @@ class TestFlushAllBranches:
         no_redis_cache.set("k", {"v": 1})
         assert no_redis_cache.flush_all() is True
         assert no_redis_cache.l1_cache == {}
+
+
+class TestNormalizeQueryUnicode:
+    """Non-Latin queries must not collapse to the same cache key.
+
+    The normalizer may strip punctuation, but it must preserve the
+    *content* of queries written in other scripts (CJK, Arabic,
+    accented Latin). If every non-ASCII-alphanumeric character is
+    deleted, distinct queries like "東京タワー" and "大阪城" both
+    normalize to "" and produce the *same* cache key — a cache-poisoning
+    bug where one query can return another's cached answer.
+    """
+
+    def _manager(self):
+        # _normalize_query / generate_key never touch Redis; disabled
+        # avoids needing a connection.
+        return CacheManager(enabled=False)
+
+    def test_distinct_cjk_queries_normalize_differently(self):
+        mgr = self._manager()
+        n1 = mgr._normalize_query("東京タワー")
+        n2 = mgr._normalize_query("大阪城")
+        assert n1 == "東京タワー"
+        assert n2 == "大阪城"
+        assert n1 != n2
+
+    def test_distinct_cjk_queries_get_distinct_cache_keys(self):
+        mgr = self._manager()
+        k1 = mgr.generate_key("東京タワー")
+        k2 = mgr.generate_key("大阪城")
+        assert k1 != k2
+
+    def test_accented_latin_preserved_not_truncated(self):
+        # "café" must not be silently reduced to "caf" (losing the é),
+        # which would collide it with a hypothetical "caf" query.
+        mgr = self._manager()
+        assert mgr._normalize_query("Café") == "café"
+        assert mgr._normalize_query("naïve") == "naïve"

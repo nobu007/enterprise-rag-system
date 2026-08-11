@@ -103,6 +103,12 @@ class CacheManager:
         3. Remove special characters (except alphanumeric and spaces)
         4. Strip leading/trailing whitespace
 
+        Alphanumeric is Unicode-aware: letters/digits in any script (CJK,
+        Arabic, Cyrillic, accented Latin, ...) are preserved. A purely
+        ASCII class would delete every non-Latin character, collapsing
+        distinct queries like "東京タワー" and "大阪城" to "" and thus to
+        the same cache key (cache poisoning).
+
         Args:
             query: Raw query string
 
@@ -115,8 +121,11 @@ class CacheManager:
         # Remove extra whitespace
         query = re.sub(r'\s+', ' ', query)
 
-        # Remove special characters (keep alphanumeric and spaces)
-        query = re.sub(r'[^a-z0-9\s]', '', query)
+        # Remove special characters (keep alphanumeric and spaces).
+        # \w is Unicode-aware in Python 3, so CJK/Arabic/accented letters
+        # survive; underscore is stripped explicitly because it is a regex
+        # word-character but not a letter or digit.
+        query = re.sub(r'[^\w\s]|_', '', query)
 
         # Strip whitespace
         query = query.strip()

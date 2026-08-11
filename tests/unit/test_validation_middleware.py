@@ -559,6 +559,22 @@ class TestValidationMiddlewareIsolated:
         assert response.status_code == 400
         assert "Command injection" in response.json()["detail"]
 
+    def test_top_level_string_body_validated(self):
+        """A malicious payload sent as a *top-level* JSON string is rejected.
+
+        Regression: the array-sibling fix widened the entry guard to
+        ``(dict, list)``, but a top-level JSON *string* scalar still failed it
+        and skipped ``_validate_request_data`` entirely — the same validator-skip
+        class (INV-VAL-001), the scalar sibling of the array case. A bare JSON
+        string IS the payload, so it must be scanned; ``_validate_dict_recursive``
+        already routes bare strings through its ``isinstance(data, str)`` branch.
+        Before the fix this returned 200.
+        """
+        client = self._build_app()
+        response = client.post("/", json="1 UNION SELECT password FROM users")
+        assert response.status_code == 400
+        assert "SQL injection" in response.json()["detail"]
+
     def test_deeply_nested_json_rejected_not_swallowed(self):
         """Deeply nested JSON that exhausts the recursive validator is rejected (400),
         not swallowed.

@@ -150,12 +150,17 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             # Try to parse as JSON
             try:
                 data = json.loads(body.decode())
-                # Validate any structured JSON payload, not just objects. A
-                # top-level JSON array (e.g. a batch-style body) previously
-                # skipped _validate_request_data entirely, so malicious strings
-                # inside it passed the boundary UNVALIDATED — the same
-                # validator-skip class as the deep-nesting case (INV-VAL-001).
-                if isinstance(data, (dict, list)):
+                # Validate any JSON payload that can carry a string: objects,
+                # arrays, AND bare string scalars. A top-level JSON array
+                # previously skipped _validate_request_data entirely (fixed),
+                # but a top-level JSON *string* (e.g. body '"1 UNION SELECT ..."')
+                # still failed the isinstance guard and passed UNVALIDATED — the
+                # same validator-skip class (INV-VAL-001), the scalar sibling of
+                # the array case. _validate_dict_recursive already routes bare
+                # strings through its isinstance(data, str) branch. int/float/
+                # bool/null are intentionally excluded: a JSON number or boolean
+                # cannot carry an injection payload.
+                if isinstance(data, (dict, list, str)):
                     await self._validate_request_data(data, request)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 # Not JSON, skip validation for non-JSON requests

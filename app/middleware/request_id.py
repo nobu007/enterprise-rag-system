@@ -7,12 +7,21 @@ for distributed tracing, debugging, and log correlation.
 
 import uuid
 import logging
+import re
 from typing import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
 logger = logging.getLogger(__name__)
+
+# C0 control characters + DEL. A client-supplied X-Request-ID carrying any of
+# these (notably \r / \n) is a log-injection (CWE-117) and response-splitting
+# vector: the value is written to log records via [%(request_id)s] AND echoed
+# in the response X-Request-ID header. Printable special chars, empty string,
+# and long values are intentionally NOT rejected — only control characters,
+# which no legitimate tracing ID ever contains.
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class RequestContextFilter(logging.Filter):
@@ -67,8 +76,15 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         Returns:
             The HTTP response with X-Request-ID header
         """
-        # Generate or use existing request ID from header
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        # Generate or use existing request ID from header. A client-supplied
+        # value is trusted ONLY if it is free of control characters; otherwise
+        # a fresh UUID is substituted so CRLF cannot reach the logs or the
+        # response header (CWE-117 / response splitting).
+        raw_request_id = request.headers.get("X-Request-ID")
+        if raw_request_id is not None and not _CONTROL_CHAR_RE.search(raw_request_id):
+            request_id = raw_request_id
+        else:
+            request_id = str(uuid.uuid4())
 
         # Store in request state for access in endpoints
         request.state.request_id = request_id

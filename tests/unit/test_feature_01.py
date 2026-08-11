@@ -288,6 +288,30 @@ class TestRequestIDMiddlewareEdgeCases:
         assert response.status_code == 200
         assert response.headers["X-Request-ID"] == special_id
 
+    def test_control_chars_in_request_id_rejected(self, client):
+        """Regression: a client-supplied X-Request-ID with control chars
+        (CR/LF/TAB) must NOT be echoed or logged — substitute a fresh UUID.
+
+        Before the fix the header value was used verbatim: "abc\\ndef" flowed
+        into the logging filter (record.request_id) and the [%(request_id)s]
+        log format, injecting a fake log line (CWE-117), and was echoed
+        verbatim in the response X-Request-ID header (response-splitting
+        vector). Only control characters are rejected; printable specials,
+        empty string, and long values are preserved (sibling tests above).
+        """
+        import uuid
+
+        for malicious in ("abc\ndef", "abc\rdef", "abc\r\ndef", "tab\there"):
+            response = client.get("/", headers={"X-Request-ID": malicious})
+            assert response.status_code == 200
+            echoed = response.headers["X-Request-ID"]
+            # No control character survives into the response (and thus log) path.
+            assert echoed.isprintable(), (
+                f"control char leaked for {malicious!r}: {echoed!r}"
+            )
+            # A fresh UUID was substituted rather than echoing the payload.
+            uuid.UUID(echoed)  # raises ValueError if not a UUID
+
 
 class TestRequestIDMiddlewareConcurrency:
     """Test concurrent request handling."""

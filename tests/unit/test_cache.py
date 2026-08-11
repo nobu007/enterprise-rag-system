@@ -526,7 +526,7 @@ class TestDeleteOperations:
         assert "other:key3" in cache_manager.l1_cache
 
 
-class TestFlushAll:
+class TestFlushAllHierarchical:
     """Tests for flush_all with hierarchical cache"""
 
     def test_flush_all_layers(self, cache_manager, mock_redis):

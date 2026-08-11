@@ -163,8 +163,8 @@ class TestExtractFeatures:
         # With date in 2024, it will be somewhat old but still valid
         assert 0.0 <= features['freshness'] <= 1.0
 
-        # Check popularity (view_count / 100)
-        assert features['popularity'] == 3.0  # 300 / 100
+        # Check popularity (view_count / 100, clamped to [0, 1])
+        assert features['popularity'] == 1.0  # 300 views -> capped at 1.0
 
     def test_extract_features_without_metadata(self):
         """Test feature extraction with minimal metadata"""
@@ -198,6 +198,36 @@ class TestExtractFeatures:
         long_result = {'score': 0.5, 'document': 'X' * 2000, 'doc_length': 2000}
         long_features = ranker.extract_features(long_result, query_length=2)
         assert long_features['length_penalty'] < 0.5
+
+    def test_extract_features_popularity_clamped(self):
+        """Popularity must be clamped to [0, 1] (INV-RANK-002).
+
+        view_count/100 is the raw signal, but the feature feeds a weight
+        blend whose weights sum to 1.0 — only [0, 1] features keep that
+        blend meaningful. Unclamped, popular docs saturate the final-score
+        clamp and lose discrimination. Assert exact boundary values, not
+        ranges: a range check (0.0 <= p <= 1.0) previously passed while
+        the unclamped 3.0 hid behind the final clamp.
+        """
+        ranker = QueryResultRanker()
+
+        def popularity_for(view_count):
+            return ranker.extract_features(
+                {'score': 0.5, 'metadata': {'view_count': view_count}},
+                query_length=2,
+            )['popularity']
+
+        # Below saturation scales linearly
+        assert popularity_for(0) == 0.0
+        assert popularity_for(50) == 0.5
+        assert popularity_for(100) == 1.0  # exactly at the cap
+
+        # At and above the cap, clamps to 1.0 (previously 1.5 / 3.0 — the bug)
+        assert popularity_for(150) == 1.0
+        assert popularity_for(300) == 1.0
+
+        # A malformed negative view_count cannot yield negative popularity
+        assert popularity_for(-50) == 0.0
 
 
 class TestCalculateRankingScore:

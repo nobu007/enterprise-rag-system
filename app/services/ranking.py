@@ -168,10 +168,17 @@ class QueryResultRanker:
 
         features['freshness'] = max(0.0, min(1.0, freshness))
 
-        # Popularity score (if metadata available)
-        features['popularity'] = (
+        # Popularity score (if metadata available).
+        # Clamped to [0, 1] to honor the feature contract (INV-RANK-002):
+        # the ranking weights are normalized to sum to 1.0 on the assumption
+        # that every feature lies in [0, 1]. An unclamped view_count/100
+        # (e.g. 300 views -> 3.0) would saturate the final-score clamp and
+        # erase ranking discrimination among popular documents.
+        raw_popularity = (
             metadata.get('view_count', 0) / 100.0
-        ) if 'view_count' in metadata else 0.0
+            if 'view_count' in metadata else 0.0
+        )
+        features['popularity'] = max(0.0, min(1.0, raw_popularity))
 
         # Query-document length ratio
         if doc_length > 0:

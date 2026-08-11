@@ -575,6 +575,53 @@ class TestValidationMiddlewareIsolated:
         assert response.status_code == 400
         assert "SQL injection" in response.json()["detail"]
 
+    @pytest.mark.parametrize(
+        "body,detail_fragment",
+        [
+            ({"<script>alert(1)</script>": "benign"}, "XSS"),
+            ({"1 UNION SELECT password FROM users": "benign"}, "SQL injection"),
+            ({"data `whoami`": "benign"}, "Command injection"),
+            ({"filters": {"../../../etc/passwd": "v"}}, "Path traversal"),
+        ],
+    )
+    def test_dict_key_validated_like_value(self, body, detail_fragment):
+        """A malicious JSON object *key* is rejected just like a malicious value.
+
+        Regression: ``_validate_dict_recursive`` recursed into each value but
+        never scanned the key itself. JSON object keys are attacker-controlled
+        strings (``json.loads`` always yields string keys), and live endpoints
+        accept arbitrary-keyed dicts (e.g. ``QueryRequest.filters:
+        Dict[str, Any]``), so a key like ``{"<script>": "x"}`` or
+        ``{"1 UNION SELECT ..": "x"}`` reached the handler unscanned — the
+        key/value sibling of the value-only validation (INV-VAL-001). Before the
+        fix these returned 200.
+        """
+        client = self._build_app()
+        response = client.post("/", json=body)
+        assert response.status_code == 400
+        assert detail_fragment in response.json()["detail"]
+
+    def test_benign_dict_keys_not_over_blocked(self):
+        """Legitimate filter-style keys (identifiers) are unaffected by key validation.
+
+        Guards the over-blocking concern: the command-injection detector's pipe/
+        semicolon/backtick rules and the SQL keyword rules must not reject plain
+        field-name keys a real client would send.
+        """
+        client = self._build_app()
+        body = {
+            "filters": {
+                "category": "books",
+                "date-range": "2024",
+                "source": "wiki",
+                "order": "asc",
+                "select": "title",
+                "a/b": "ratio",
+            }
+        }
+        response = client.post("/", json=body)
+        assert response.status_code == 200
+
     def test_deeply_nested_json_rejected_not_swallowed(self):
         """Deeply nested JSON that exhausts the recursive validator is rejected (400),
         not swallowed.

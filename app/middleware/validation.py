@@ -212,7 +212,15 @@ class ValidationMiddleware(BaseHTTPMiddleware):
         """
         if isinstance(data, dict):
             for key, value in data.items():
-                current_path = f"{path}.{key}" if path else key
+                current_path = f"{path}.{key}" if path else str(key)
+                # JSON object keys are attacker-controlled strings too
+                # (json.loads always yields string keys), and live endpoints
+                # accept arbitrary-keyed dicts (e.g. QueryRequest.filters:
+                # Dict[str, Any]). Scan keys as well as values — otherwise a
+                # malicious key like {"<script>": "x"} or {"1 UNION SELECT ..":
+                # "x"} reaches the handler unscanned, the key/value sibling of
+                # the value-only validation (INV-VAL-001).
+                await self._validate_string_value(str(key), request, f"{current_path}#key")
                 await self._validate_dict_recursive(value, request, current_path)
 
         elif isinstance(data, list):

@@ -34,6 +34,48 @@ class TestWeightNormalization:
             'popularity': 0.25,
         }
 
+    def test_all_zero_weights_do_not_crash(self):
+        """All-zero weights must not raise ZeroDivisionError.
+
+        Regression: the config-driven ``get_ranker()`` sources all four
+        weights from env-settable ``settings.ranking_*_weight``; if an
+        operator sets every weight to 0, ``total_weight == 0`` entered the
+        normalization branch and divided by zero, crashing construction.
+        The guard now skips normalization and degrades to 0.0 scores.
+        """
+        ranker = QueryResultRanker(
+            semantic_weight=0.0,
+            keyword_weight=0.0,
+            freshness_weight=0.0,
+            popularity_weight=0.0,
+        )
+        # No crash; weights preserved as-is (all zero) instead of normalized.
+        assert ranker.get_weights() == {
+            'semantic': 0.0,
+            'keyword': 0.0,
+            'freshness': 0.0,
+            'popularity': 0.0,
+        }
+        # Score degrades to 0.0 rather than raising.
+        assert ranker.calculate_ranking_score({'semantic_score': 0.9}) == 0.0
+
+    def test_net_negative_weights_do_not_invert(self):
+        """A net-negative weight total must not flip signs via division."""
+        ranker = QueryResultRanker(
+            semantic_weight=1.0,
+            keyword_weight=1.0,
+            freshness_weight=-1.5,
+            popularity_weight=-1.5,
+        )  # total == -1.0
+        # Guard skips normalization, so the passed-in weights are preserved
+        # verbatim (no division by a negative that would invert them).
+        assert ranker.get_weights() == {
+            'semantic': 1.0,
+            'keyword': 1.0,
+            'freshness': -1.5,
+            'popularity': -1.5,
+        }
+
 
 class TestFreshnessLastUpdated:
     """Cover the ``last_updated`` freshness branch (L118-141)."""

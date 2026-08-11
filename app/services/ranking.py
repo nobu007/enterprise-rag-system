@@ -55,7 +55,17 @@ class QueryResultRanker:
             freshness_weight +
             popularity_weight
         )
-        if not (0.9 <= total_weight <= 1.1):
+        if total_weight <= 0:
+            # All-zero (or net-negative) weights reach the config-driven
+            # constructor via settings.ranking_*_weight (all env-settable);
+            # normalizing would divide by zero (crash) or flip signs. Skip it
+            # so construction degrades gracefully to 0.0 scores instead of
+            # raising ZeroDivisionError.
+            logger.warning(
+                f"Ranking weights sum to {total_weight} (<= 0); skipping "
+                "normalization. Scores will be 0.0 — check weight config."
+            )
+        elif not (0.9 <= total_weight <= 1.1):
             logger.warning(
                 f"Weights sum to {total_weight}, expected ~1.0. "
                 "Normalizing weights."

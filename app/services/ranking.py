@@ -98,10 +98,13 @@ class QueryResultRanker:
             if max_score > 0 else 0.0
         )
 
-        # Keyword match score (if available)
-        features['keyword_score'] = (
-            result.get('keyword_score', 0.0)
-        )
+        # Keyword match score (if available). Clamped to [0, 1] to honor the
+        # feature contract (INV-RANK-002) -- see the popularity feature below.
+        # An unclamped value (e.g. a raw BM25 score > 1.0 supplied by the
+        # caller) would let one feature exceed its weight budget and saturate
+        # the final-score clamp, erasing discrimination among keyword-heavy
+        # documents.
+        features['keyword_score'] = max(0.0, min(1.0, result.get('keyword_score', 0.0)))
 
         # Document length penalty (prefer concise, relevant docs)
         doc_length = result.get('doc_length', 0)

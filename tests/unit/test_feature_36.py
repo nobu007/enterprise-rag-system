@@ -229,6 +229,38 @@ class TestExtractFeatures:
         # A malformed negative view_count cannot yield negative popularity
         assert popularity_for(-50) == 0.0
 
+    def test_extract_features_keyword_score_clamped(self):
+        """keyword_score must be clamped to [0, 1] (INV-RANK-002).
+
+        keyword_score is the keyword-match peer of semantic_score and
+        popularity in the weight blend (weights sum to 1.0). Every other
+        feature is normalized/clamped to [0, 1]; an unclamped keyword_score
+        (e.g. a raw BM25 score > 1.0 supplied by the caller) lets one feature
+        exceed its weight budget and saturate the final-score clamp, erasing
+        discrimination among keyword-heavy documents -- the same failure mode
+        as the popularity bug (see test_extract_features_popularity_clamped).
+        Assert exact boundary values, not ranges.
+        """
+        ranker = QueryResultRanker()
+
+        def keyword_score_for(raw):
+            return ranker.extract_features(
+                {'score': 0.5, 'keyword_score': raw},
+                query_length=2,
+            )['keyword_score']
+
+        # In-range values pass through unchanged
+        assert keyword_score_for(0.0) == 0.0
+        assert keyword_score_for(0.5) == 0.5
+        assert keyword_score_for(1.0) == 1.0
+
+        # Above 1.0, clamps to 1.0 (previously 1.5 / 3.0 -- the bug)
+        assert keyword_score_for(1.5) == 1.0
+        assert keyword_score_for(3.0) == 1.0
+
+        # A malformed negative keyword_score cannot yield a negative feature
+        assert keyword_score_for(-1.0) == 0.0
+
 
 class TestCalculateRankingScore:
     """Tests for ranking score calculation"""

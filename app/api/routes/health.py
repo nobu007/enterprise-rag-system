@@ -3,7 +3,7 @@ Health check endpoints
 """
 
 from fastapi import APIRouter, Request
-from typing import Dict
+from typing import Any, Dict
 
 from app.core.rate_limit import limiter
 
@@ -55,7 +55,7 @@ async def health_check(request: Request) -> Dict[str, str]:
     tags=["Health"]
 )
 @limiter.limit("120/minute")
-async def detailed_health_check(request: Request) -> Dict[str, Dict[str, str]]:
+async def detailed_health_check(request: Request) -> Dict[str, Any]:
     """Detailed health check with service status / サービスステータスを含む詳細なヘルスチェック
 
     ## Services Checked / チェックされるサービス
@@ -100,7 +100,7 @@ async def detailed_health_check(request: Request) -> Dict[str, Dict[str, str]]:
     tags=["Health"]
 )
 @limiter.limit("120/minute")
-async def cache_stats(request: Request) -> Dict[str, Dict[str, str]]:
+async def cache_stats(request: Request) -> Dict[str, Any]:
     """Cache statistics endpoint / キャッシュ統計エンドポイント
 
     ## Statistics Included / 含まれる統計

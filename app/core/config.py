@@ -4,7 +4,7 @@ Configuration management for Enterprise RAG System
 This module handles all configuration settings using Pydantic for validation.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional, List
 
@@ -126,10 +126,13 @@ class Settings(BaseSettings):
         """Parse comma-separated headers into a list"""
         return [h.strip() for h in self.allowed_headers.split(",")]
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # Pydantic-settings v2: SettingsConfigDict replaces the deprecated
+    # class-based ``Config``. Values unchanged -> env loading identical.
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
 
 # Global settings instance

@@ -58,11 +58,22 @@ class Settings(BaseSettings):
         "cross-encoder/ms-marco-MiniLM-L-12-v2",
     )
 
-    # Feature-Based Ranking Configuration
-    ranking_semantic_weight: float = Field(0.4)
-    ranking_keyword_weight: float = Field(0.3)
-    ranking_freshness_weight: float = Field(0.1)
-    ranking_popularity_weight: float = Field(0.2)
+    # Feature-Based Ranking Configuration.
+    # Each weight is a non-negative importance coefficient fed straight into
+    # QueryResultRanker by get_ranker(). The ranker's normalization only guards
+    # a *total* weight <= 0 (divide-by-zero / net sign-flip); it does NOT catch
+    # an *individual* negative weight whose sum stays positive. E.g.
+    # RANKING_KEYWORD_WEIGHT=-0.5 with the others positive leaves total > 0, so
+    # normalization proceeds and keyword_weight goes negative — then a doc with
+    # a STRONG keyword match (feature clamped to 1.0) gets a *negative*
+    # contribution and ranks BELOW a no-match doc: the signal inverts. Bound
+    # each weight to >= 0 so a misconfigured env var fails fast at Settings load
+    # (same class as hybrid_search_alpha above; negative importance is
+    # meaningless, large positive just dominates after normalization).
+    ranking_semantic_weight: float = Field(0.4, ge=0.0)
+    ranking_keyword_weight: float = Field(0.3, ge=0.0)
+    ranking_freshness_weight: float = Field(0.1, ge=0.0)
+    ranking_popularity_weight: float = Field(0.2, ge=0.0)
     ranking_enabled: bool = Field(False)
 
     # LLM Configuration

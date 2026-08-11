@@ -69,6 +69,25 @@ class TestEnvVarCaseInsensitive:
     def test_hybrid_search_alpha_accepted_in_range(self, monkeypatch, good_alpha):
         assert _settings(monkeypatch, HYBRID_SEARCH_ALPHA=good_alpha).hybrid_search_alpha == float(good_alpha)
 
+    @pytest.mark.parametrize("field", ["RANKING_SEMANTIC_WEIGHT", "RANKING_KEYWORD_WEIGHT", "RANKING_FRESHNESS_WEIGHT", "RANKING_POPULARITY_WEIGHT"])
+    def test_ranking_weight_rejected_negative(self, monkeypatch, field):
+        # ranking_*_weight feed QueryResultRanker straight from get_ranker().
+        # The ranker's normalization only guards a *total* weight <= 0; a single
+        # negative weight whose sum stays positive slips through: e.g.
+        # RANKING_KEYWORD_WEIGHT=-0.5 with the others at 2.0 leaves total=1.5,
+        # normalization turns keyword_weight negative, and a strong-keyword doc
+        # then scores LOWER than a no-keyword doc (signal inversion — same
+        # class as hybrid_search_alpha). ge=0.0 must reject it at Settings load.
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, **{field: "-0.5"})
+
+    @pytest.mark.parametrize("good", ["0", "0.0", "0.4", "2"])
+    def test_ranking_weight_accepted_non_negative(self, monkeypatch, good):
+        # 0 and large positive are valid: 0 drops a feature (legitimate),
+        # large positive just dominates after normalization.
+        result = _settings(monkeypatch, RANKING_KEYWORD_WEIGHT=good)
+        assert result.ranking_keyword_weight == float(good)
+
 
 class TestEnvBindingAcrossFieldGroups:
     """Env binding must cover every field group and type, so dropping

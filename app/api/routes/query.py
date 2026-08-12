@@ -434,8 +434,18 @@ async def stream_query(
                 # Create retriever function with reranking support
                 async def retriever_func(query, top_k, use_hybrid, filter_dict, rerank, collection):
                     """Wrapper for pipeline's retrieval logic with optional reranking"""
-                    # Perform initial retrieval
-                    results = await pipeline.retriever.retrieve(
+                    # Perform initial retrieval. ``HybridRetriever.retrieve`` is
+                    # SYNCHRONOUS (``def retrieve`` in retrieval.py, returning a
+                    # ``List[RetrievalResult]``); both pipeline-internal call sites
+                    # (RAGPipeline.query and StreamingRAGPipeline.stream_query)
+                    # invoke it without ``await``. ``retriever_func`` itself stays
+                    # async because ``stream_query_with_retrieval`` awaits it, but
+                    # the inner ``retrieve`` call must NOT be awaited -- awaiting a
+                    # plain list raises ``TypeError: object list can't be used in
+                    # 'await' expression`` on every streaming request in production
+                    # (the route was the inconsistent outlier vs. the two sync
+                    # pipeline callers).
+                    results = pipeline.retriever.retrieve(
                         query=query,
                         top_k=top_k,
                         use_hybrid=use_hybrid,

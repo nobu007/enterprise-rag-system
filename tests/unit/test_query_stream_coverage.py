@@ -47,10 +47,16 @@ def _llm_stream():
 def _make_pipeline(retrieve_side_effect=None):
     p = Mock()
     p.retriever = Mock()
+    # ``HybridRetriever.retrieve`` is SYNCHRONOUS (``def retrieve`` returning a
+    # list), so model it with Mock -- not AsyncMock. An AsyncMock masked a real
+    # bug in the route (``await pipeline.retriever.retrieve(...)`` on a sync
+    # method -> ``TypeError`` on every production request); the sync Mock makes
+    # this test faithful to production and a regression guard against
+    # re-introducing that ``await``.
     if retrieve_side_effect is not None:
-        p.retriever.retrieve = AsyncMock(side_effect=retrieve_side_effect)
+        p.retriever.retrieve = Mock(side_effect=retrieve_side_effect)
     else:
-        p.retriever.retrieve = AsyncMock(return_value=[_retrieval_result()])
+        p.retriever.retrieve = Mock(return_value=[_retrieval_result()])
     p.reranker = None  # no reranking by default
     return p
 
@@ -112,6 +118,31 @@ class TestStreamQueryHappyPath:
         # Default request (rerank=True) but pipeline.reranker is None -> the
         # rerank branch is skipped, so no error chunk should be emitted.
         assert not any("error" in c for c in chunks)
+
+
+class TestStreamRetrieveSyncContract:
+    """Regression guard: retriever_func must NOT await retrieve.
+
+    ``HybridRetriever.retrieve`` is synchronous (``def retrieve`` in
+    retrieval.py); the two pipeline-internal callers (RAGPipeline.query and
+    StreamingRAGPipeline.stream_query) call it without ``await``, and the route
+    must match. ``_make_pipeline`` models retrieve as a plain (sync) Mock --
+    production reality. With a sync Mock, ``await pipeline.retriever.retrieve(...)``
+    (the old bug) raises ``TypeError``, which ``generate()``'s except turns into
+    an error SSE chunk. So a clean content stream with no error chunk proves the
+    await was removed; re-adding it fails this test.
+    """
+
+    def test_retrieve_called_without_await(self, app_with_overrides):
+        app, pipeline, llm = app_with_overrides
+        client = TestClient(app)
+        resp = client.post("/query/stream", json={"query": "What is RAG?"})
+
+        assert resp.status_code == 200
+        assert pipeline.retriever.retrieve.called
+        chunks = _parse_sse(resp.text)
+        assert chunks, "expected content chunks; stream raised/empty instead"
+        assert not any("error" in c for c in chunks), chunks
 
 
 class TestStreamQueryRerankBranch:
@@ -184,7 +215,7 @@ class TestStreamQueryErrorHandlers:
         app, pipeline, llm = app_with_overrides
         # Retrieval raising inside generate() is caught and sent as an error
         # SSE chunk (status stays 200 because StreamingResponse is returned).
-        pipeline.retriever.retrieve = AsyncMock(side_effect=RuntimeError("retrieve down"))
+        pipeline.retriever.retrieve = Mock(side_effect=RuntimeError("retrieve down"))
 
         client = TestClient(app)
         resp = client.post("/query/stream", json={"query": "What is RAG?"})

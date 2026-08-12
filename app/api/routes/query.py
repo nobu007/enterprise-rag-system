@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
-from typing import List, Dict, Any, Optional, AsyncGenerator
+from typing import List, Dict, Any, Optional, AsyncGenerator, Annotated
 
 from app.services.rag_pipeline import RAGPipeline
 from app.services.ranking import QueryResultRanker
@@ -56,7 +56,11 @@ class StreamingQueryRequest(BaseModel):
 
 class BatchQueryRequest(BaseModel):
     """Request model for batch query endpoint"""
-    queries: List[str] = Field(..., description="List of questions to ask")
+    # Per-item length cap mirrors QueryRequest.query / StreamingQueryRequest
+    # query (max_length=1000). Without it a single oversized batch item is
+    # accepted at the boundary and fed into pipeline.query -> unbounded
+    # embedding cost / LLM context blowup (sibling of the single-query cap).
+    queries: List[Annotated[str, Field(max_length=1000)]] = Field(..., description="List of questions to ask")
     collection: Optional[str] = None
     top_k: int = Field(5, ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")

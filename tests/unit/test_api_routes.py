@@ -296,6 +296,33 @@ class TestBatchQueryEndpoint:
 
         assert response.status_code == 422  # Validation error
 
+    def test_batch_query_per_item_length_rejected(self, client):
+        """An oversized individual batch query is rejected at the boundary.
+
+        Mirrors the single-query max_length=1000 cap (QueryRequest /
+        StreamingQueryRequest.query); without it one batch item can carry
+        an arbitrarily long query -> unbounded embedding / LLM cost.
+        """
+        response = client.post(
+            "/query/batch",
+            json={"queries": ["ok", "a" * 1001], "top_k": 5}
+        )
+
+        assert response.status_code == 422  # per-item max_length exceeded
+
+    def test_batch_query_per_item_max_length_boundary_accepted(
+        self, client, mock_rag_pipeline, sample_rag_response
+    ):
+        """A batch item of exactly 1000 chars is accepted (boundary value)."""
+        mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
+
+        response = client.post(
+            "/query/batch",
+            json={"queries": ["a" * 1000], "top_k": 5}
+        )
+
+        assert response.status_code == 200
+
 
 class TestHealthEndpoint:
     """Test GET /query/health endpoint"""
@@ -347,3 +374,20 @@ class TestResponseModels:
 
         with pytest.raises(Exception):
             BatchQueryRequest(queries=["Test"], top_k=21)
+
+    def test_batch_query_request_per_item_max_length(self):
+        """Per-item query capped at 1000 (sibling of QueryRequest.query)."""
+        from app.api.routes.query import BatchQueryRequest
+        from pydantic import ValidationError
+
+        # Boundary accepted: exactly 1000 chars per item, multiple items
+        req = BatchQueryRequest(queries=["a" * 1000, "b" * 1000])
+        assert len(req.queries) == 2
+
+        # One oversized item among several is still rejected
+        with pytest.raises(ValidationError):
+            BatchQueryRequest(queries=["ok", "a" * 1001])
+
+        # Single oversized item rejected
+        with pytest.raises(ValidationError):
+            BatchQueryRequest(queries=["a" * 1001])

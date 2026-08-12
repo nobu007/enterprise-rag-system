@@ -4,6 +4,8 @@ Query API Routes
 This module defines API endpoints for querying the RAG system.
 """
 
+import json
+
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -453,9 +455,15 @@ async def stream_query(
 
             except Exception as e:
                 logger.error(f"Streaming error: {e}", exc_info=True)
-                # Send error as SSE
-                error_sse = f'data: {{"error": "{str(e)}", "is_done": true}}\n\n'
-                yield error_sse
+                # Send error as SSE. Build the payload with json.dumps() -- the
+                # same encoding the two sibling SSE emitters use
+                # (StreamingChunk.to_sse and format_sse_stream) -- so an
+                # exception message containing a double-quote, backslash, or
+                # newline is properly escaped. The prior f-string assembly left
+                # such characters raw, yielding malformed JSON and (for a
+                # newline) splitting the SSE event prematurely.
+                error_payload = {"error": str(e), "is_done": True}
+                yield f"data: {json.dumps(error_payload)}\n\n"
 
         # Return SSE streaming response
         return StreamingResponse(

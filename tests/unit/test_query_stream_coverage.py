@@ -212,3 +212,47 @@ class TestStreamQueryErrorHandlers:
         assert resp.status_code == 200
         chunks = _parse_sse(resp.text)
         assert any("error" in c and c.get("is_done") for c in chunks), chunks
+
+    def test_stream_error_sse_valid_json_with_special_chars(
+        self, app_with_overrides, monkeypatch
+    ):
+        """The route's last-resort error SSE (generate() except) must emit
+        valid JSON even when the exception message contains characters that
+        break naive f-string JSON assembly: double-quotes, backslashes, and
+        newlines (a newline also splits the SSE event prematurely).
+
+        The two sibling SSE emitters -- StreamingChunk.to_sse and
+        format_sse_stream -- build their payloads with json.dumps(); the
+        route's hand-rolled f-string is the odd one out and yields malformed
+        JSON for any error message containing a quote or newline. Parse every
+        emitted data: block strictly (json.loads, no swallowing) and require
+        the error message to round-trip intact.
+        """
+        from app.api.routes import query as query_module
+
+        bad_message = 'format failed: "timeout" at \\node\nnext line'
+
+        async def _boom(chunk_generator):
+            raise RuntimeError(bad_message)
+            yield  # pragma: no cover - makes this an async generator
+
+        monkeypatch.setattr(query_module, "format_sse_stream", _boom)
+
+        app, pipeline, llm = app_with_overrides
+        client = TestClient(app)
+        resp = client.post("/query/stream", json={"query": "What is RAG?"})
+
+        assert resp.status_code == 200
+
+        # Strict-parse EVERY data: block; the f-string bug surfaces here as
+        # json.JSONDecodeError (inner quotes left unescaped) or as a split
+        # event (embedded newline). json.dumps round-trips the message intact.
+        parsed = []
+        for block in resp.text.split("\n\n"):
+            block = block.strip()
+            if block.startswith("data: "):
+                parsed.append(json.loads(block[len("data: "):]))
+        err_chunks = [c for c in parsed if "error" in c]
+        assert err_chunks, f"expected an error chunk; body={resp.text!r}"
+        assert err_chunks[0]["is_done"] is True
+        assert err_chunks[0]["error"] == bad_message

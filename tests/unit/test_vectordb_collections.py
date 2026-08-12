@@ -5,6 +5,7 @@ Unit tests for VectorDB multi-collection support
 import pytest
 import tempfile
 import os
+import logging
 from app.core.vectordb import FAISSVectorDB
 
 
@@ -155,6 +156,65 @@ def test_vector_db_nonexistent_collection(temp_vector_db, sample_vectors):
 
     # Should return empty list
     assert results == []
+
+
+class TestCollectionLogInjectionVectorDB:
+    """CWE-117: a client-controlled ``collection`` must not forge log lines.
+
+    ``collection`` is the ``QueryRequest.collection`` body field; the query
+    route passes it straight through ``RAGPipeline.query`` ->
+    ``HybridRetriever.semantic_search`` -> ``FAISSVectorDB.search``. When the
+    collection does not exist, ``search`` logs the name at WARNING. A CR/LF in
+    the name terminates the real log line and starts a forged one -- the same
+    log-injection class as the ``collection`` field in rag_pipeline (91d9640)
+    and the ``query`` body field (43166fa). 91d9640 sanitised the field only at
+    the rag_pipeline retrieval log; this is the live FAISS query-path site that
+    that sweep missed. The validation middleware scans body values for
+    XSS/SQL/path/command but NOT control chars, so CR/LF reaches this logger
+    unfiltered.
+    """
+
+    def test_collection_crlf_neutralised_in_not_found_log(
+        self, temp_vector_db, sample_vectors
+    ):
+        # Capture the vectordb logger's records directly (robust to root-handler
+        # / level config, unlike caplog propagation).
+        vectordb_logger = logging.getLogger("app.core.vectordb")
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(record)
+
+        handler = _Capture(logging.DEBUG)
+        vectordb_logger.addHandler(handler)
+        vectordb_logger.setLevel(logging.DEBUG)
+        try:
+            results = temp_vector_db.search(
+                query_vector=sample_vectors[0],
+                top_k=5,
+                collection="x\nFAKE LOG line\r",
+            )
+        finally:
+            vectordb_logger.removeHandler(handler)
+
+        # Non-existent collection still returns no results (behavior unchanged).
+        assert results == []
+
+        not_found_msgs = [
+            r.getMessage()
+            for r in captured
+            if "not found" in r.getMessage()
+        ]
+        assert not_found_msgs, "'Collection ... not found' warning was not emitted"
+        msg = not_found_msgs[0]
+        # No raw CR/LF survives -> the forged "FAKE LOG line" cannot start a
+        # new log line. Pre-fix the raw chr(10)/chr(13) were present.
+        assert "\n" not in msg
+        assert "\r" not in msg
+        # Escaped form is present -> value preserved, only log rep changed.
+        assert "x\\nFAKE LOG line\\r" in msg
+
 
 
 def test_vector_db_get_stats_multiple_collections(temp_vector_db, sample_vectors, sample_metadata):

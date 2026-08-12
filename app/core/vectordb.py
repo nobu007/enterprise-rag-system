@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_for_log
 from app.core import metrics
 
 
@@ -397,7 +397,13 @@ class FAISSVectorDB(VectorDB):
         """Search for similar vectors in FAISS within a specific collection"""
         index = self._get_collection_index(collection)
         if index is None:
-            logger.warning(f"Collection '{collection}' not found")
+            # ``collection`` is client-controlled (QueryRequest.collection flows
+            # here verbatim via rag_pipeline -> HybridRetriever -> search); a
+            # CR/LF in it would forge a fake subsequent log line (CWE-117).
+            # Sibling of 91d9640, which sanitised this same field in
+            # rag_pipeline only -- this is the live FAISS query-path site that
+            # that sweep missed.
+            logger.warning(f"Collection '{sanitize_for_log(collection)}' not found")
             return []
 
         import numpy as np

@@ -58,6 +58,11 @@ def _make_pipeline(retrieve_side_effect=None):
     else:
         p.retriever.retrieve = Mock(return_value=[_retrieval_result()])
     p.reranker = None  # no reranking by default
+    # ``RAGPipeline.temperature`` is a real float (``settings.llm_temperature``
+    # wired at main.py:86); model it faithfully rather than leaving an auto-Mock,
+    # since the route now forwards ``pipeline.temperature`` into the streaming
+    # LLM call (see TestStreamTemperatureConfigContract).
+    p.temperature = 0.7
     return p
 
 
@@ -289,6 +294,44 @@ class TestStreamEmptyRetrievalGuard:
             "LLM must not be called on empty retrieval"
         )
         assert any(c.get("is_done") for c in chunks), "final chunk must signal done"
+
+
+class TestStreamTemperatureConfigContract:
+    """Regression guard: /query/stream must honor the pipeline's configured
+    temperature (``settings.llm_temperature``), matching /query.
+
+    ``StreamingRAGService`` defaults ``temperature`` to a hardcoded 0.7, and the
+    route previously constructed it WITHOUT forwarding ``temperature``, so the
+    streaming LLM call always used 0.7 regardless of the configured
+    ``LLM_TEMPERATURE``. That default equals the config default (0.7), which HID
+    the divergence -- but an operator who sets ``LLM_TEMPERATURE=0`` (common in
+    enterprise RAG for deterministic / factual answers) silently got
+    non-deterministic 0.7-temperature answers from /stream while /query
+    honored 0.0. ``config.py`` documents that ``settings.llm_temperature`` flows
+    to ``streaming.py``'s LLM call; the route delivers that contract only by
+    forwarding ``pipeline.temperature``.
+    """
+
+    def test_stream_forwards_pipeline_temperature(self, app_with_overrides):
+        app, pipeline, llm = app_with_overrides
+        # Simulate an operator setting LLM_TEMPERATURE=0 for determinism.
+        pipeline.temperature = 0.0
+
+        client = TestClient(app)
+        resp = client.post("/query/stream", json={"query": "What is RAG?"})
+
+        assert resp.status_code == 200
+        chunks = _parse_sse(resp.text)
+        assert chunks, "expected content chunks"
+        assert not any("error" in c for c in chunks), chunks
+        # The streaming LLM call must honor the pipeline's configured
+        # temperature, not the hardcoded 0.7 default.
+        assert llm.chat.completions.create.called
+        assert llm.chat.completions.create.call_args.kwargs["temperature"] == 0.0, (
+            "/query/stream must forward pipeline.temperature "
+            "(= settings.llm_temperature) to the LLM; it used the hardcoded "
+            "0.7 StreamingRAGService default instead"
+        )
 
 
 class TestStreamQueryErrorHandlers:

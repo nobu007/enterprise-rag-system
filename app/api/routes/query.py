@@ -414,10 +414,23 @@ async def stream_query(
         StreamingResponse with SSE formatted chunks
     """
     try:
-        # Initialize streaming service
+        # Initialize streaming service. Forward the pipeline's configured
+        # ``temperature`` (= ``settings.llm_temperature`` wired at main.py:86)
+        # so /query/stream honors the operator's LLM_TEMPERATURE exactly like
+        # /query (RAGPipeline._call_llm sends ``temperature=self.temperature``).
+        # Previously the service was built with no ``temperature`` argument, so
+        # it fell back to StreamingRAGService's hardcoded 0.7 default. That
+        # happens to equal the config default (0.7), which HID the divergence
+        # -- but an operator who sets LLM_TEMPERATURE=0 (common in enterprise
+        # RAG for deterministic / factual answers) silently got non-deterministic
+        # 0.7-temperature answers from /stream while /query respected 0.0.
+        # config.py documents this flow ("...settings.llm_temperature to
+        # RAGPipeline, which sends it as temperature= at ... streaming.py L149");
+        # the route is what actually broke that contract.
         streaming_service = StreamingRAGService(
             llm_client=llm_client,
-            max_tokens=stream_req.max_tokens
+            max_tokens=stream_req.max_tokens,
+            temperature=pipeline.temperature
         )
 
         # Validate request parameters

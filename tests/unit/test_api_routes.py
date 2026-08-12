@@ -445,6 +445,22 @@ class TestResponseModels:
         with pytest.raises(ValidationError):
             BatchQueryRequest(queries=["q"], collection="c" * 1001)
 
+    def test_batch_query_request_list_size_cap(self):
+        """List size capped at 100: pipeline.batch_query fans each item out to a
+        full pipeline.query with no internal bound, and the route limiter is
+        per-request -- without this cap one body of many short queries bypasses
+        per-query rate limiting (cost/DoS fan-out)."""
+        from app.api.routes.query import BatchQueryRequest
+        from pydantic import ValidationError
+
+        # Boundary accepted: exactly 100 items, each at the per-item char cap
+        req = BatchQueryRequest(queries=["q" * 1000] * 100)
+        assert len(req.queries) == 100
+
+        # One item over the cap is rejected at the boundary (422 in the API)
+        with pytest.raises(ValidationError):
+            BatchQueryRequest(queries=["q"] * 101)
+
     def test_streaming_query_request_collection_max_length(self):
         """Collection capped at 1000 on StreamingQueryRequest (sibling of query cap)."""
         from app.api.routes.query import StreamingQueryRequest

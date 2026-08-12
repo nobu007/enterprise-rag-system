@@ -62,7 +62,16 @@ class BatchQueryRequest(BaseModel):
     # query (max_length=1000). Without it a single oversized batch item is
     # accepted at the boundary and fed into pipeline.query -> unbounded
     # embedding cost / LLM context blowup (sibling of the single-query cap).
-    queries: List[Annotated[str, Field(max_length=1000)]] = Field(..., description="List of questions to ask")
+    queries: List[Annotated[str, Field(max_length=1000)]] = Field(..., max_length=100, description="List of questions to ask")
+    # List-size cap (max_length=100): pipeline.batch_query fans each item out
+    # to a full pipeline.query (embedding + retrieval + LLM) in an unbounded
+    # ``for question in questions`` loop, and the route limiter is per-REQUEST
+    # (60/min), not per-item. Without this cap a single body of ~10k short
+    # queries (each passing the per-item 1000-char cap) bypasses per-query rate
+    # limiting by ~10000x -> cost/DoS fan-out. max_request_size (10MB) is a
+    # loose (~10k-item) backstop and is skipped for chunked bodies lacking a
+    # Content-Length header. 100 is a conservative safety ceiling far above any
+    # realistic bulk/comparison batch; tightening it is a one-line change.
     # Length cap mirrors QueryRequest.collection / StreamingQueryRequest.collection
     # (max_length=1000); an oversized collection name reaches Prometheus labels
     # (raw value) and log lines, bloating metric label values / log output.

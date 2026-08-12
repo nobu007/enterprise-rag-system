@@ -137,7 +137,9 @@ class CacheManager:
         query: str,
         collection: str = "default",
         top_k: int = 5,
-        rerank: bool = True
+        rerank: bool = True,
+        use_hybrid: bool = True,
+        filter_dict: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Generate a unique cache key from query parameters with improved normalization.
@@ -147,15 +149,32 @@ class CacheManager:
             collection: Collection name
             top_k: Number of results
             rerank: Whether re-ranking is enabled
+            use_hybrid: Whether hybrid (semantic + keyword) search is used
+            filter_dict: Optional metadata filters that restrict the result set
 
         Returns:
             SHA256 hash of the normalized parameters with version prefix
+
+        Note:
+            ``use_hybrid`` and ``filter_dict`` change the retrieved result set, so
+            they MUST participate in the key. Omitting them made two queries that
+            differ only by filter (or search mode) collide on one key, so the
+            second query returned the FIRST query's cached result — a cross-filter
+            data leak / wrong-answer cache-poisoning bug.
         """
         # Normalize the query for better cache hits
         normalized_query = self._normalize_query(query)
 
+        # Deterministic filter representation: a None/empty filter ("no
+        # restriction") collapses to "" so both map to the same key, while any
+        # distinct non-empty filter yields a distinct, order-independent string.
+        filter_repr = "" if not filter_dict else json.dumps(filter_dict, sort_keys=True)
+
         # Create a normalized string from parameters
-        params = f"{self.CACHE_VERSION}:{normalized_query}:{collection}:{top_k}:{rerank}"
+        params = (
+            f"{self.CACHE_VERSION}:{normalized_query}:{collection}:"
+            f"{top_k}:{rerank}:{use_hybrid}:{filter_repr}"
+        )
 
         # Generate hash
         hash_key = hashlib.sha256(params.encode()).hexdigest()

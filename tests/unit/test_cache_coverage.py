@@ -187,3 +187,63 @@ class TestNormalizeQueryUnicode:
         mgr = self._manager()
         assert mgr._normalize_query("Café") == "café"
         assert mgr._normalize_query("naïve") == "naïve"
+
+
+class TestCacheKeyFilterIsolation:
+    """A query's result set depends on its filters and search mode, so the
+    cache key must reflect them.
+
+    ``generate_key`` historically keyed only on (query, collection, top_k,
+    rerank) even though ``query()`` also feeds ``filter_dict`` and
+    ``use_hybrid`` into retrieval. Two requests identical in the keyed
+    params but differing in filter (or search mode) therefore produced the
+    *same* key, so the second request returned the FIRST request's cached
+    answer — a cross-filter data leak / cache-poisoning bug, the
+    param-omission sibling of ``TestNormalizeQueryUnicode`` above.
+    """
+
+    def _manager(self):
+        return CacheManager(enabled=False)
+
+    def test_distinct_filters_get_distinct_cache_keys(self):
+        mgr = self._manager()
+        k_fin = mgr.generate_key(
+            "salary", "default", 5, True, True, {"dept": "finance"}
+        )
+        k_eng = mgr.generate_key(
+            "salary", "default", 5, True, True, {"dept": "engineering"}
+        )
+        assert k_fin != k_eng
+
+    def test_filter_present_vs_absent_get_distinct_keys(self):
+        mgr = self._manager()
+        k_filtered = mgr.generate_key(
+            "salary", "default", 5, True, True, {"dept": "finance"}
+        )
+        k_unfiltered = mgr.generate_key(
+            "salary", "default", 5, True, True, None
+        )
+        assert k_filtered != k_unfiltered
+
+    def test_use_hybrid_distinct_keys(self):
+        mgr = self._manager()
+        k_hybrid = mgr.generate_key("q", "default", 5, True, True, None)
+        k_vector = mgr.generate_key("q", "default", 5, True, False, None)
+        assert k_hybrid != k_vector
+
+    def test_none_and_empty_filter_collapse_to_same_key(self):
+        # Both None and {} mean "no restriction", so they must share a key
+        # (otherwise equivalent queries needlessly bypass the cache).
+        mgr = self._manager()
+        k_none = mgr.generate_key("q", "default", 5, True, True, None)
+        k_empty = mgr.generate_key("q", "default", 5, True, True, {})
+        assert k_none == k_empty
+
+    def test_filter_key_order_independent(self):
+        # Semantically equal filters expressed in different key order must
+        # not fragment the cache key.
+        mgr = self._manager()
+        k_ab = mgr.generate_key("q", "default", 5, True, True, {"a": 1, "b": 2})
+        k_ba = mgr.generate_key("q", "default", 5, True, True, {"b": 2, "a": 1})
+        assert k_ab == k_ba
+

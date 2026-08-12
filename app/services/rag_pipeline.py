@@ -227,7 +227,12 @@ Answer:"""
         # Check cache first
         cache_key = None
         if self.cache:
-            cache_key = self.cache.generate_key(question, collection, top_k, rerank)
+            # Key on use_hybrid + filter_dict too: they change the retrieved
+            # result set, so omitting them made queries that differ only by
+            # filter/search-mode collide on one key (cross-filter data leak).
+            cache_key = self.cache.generate_key(
+                question, collection, top_k, rerank, use_hybrid, filter_dict
+            )
             cached_result = self.cache.get(cache_key)
 
             if cached_result:

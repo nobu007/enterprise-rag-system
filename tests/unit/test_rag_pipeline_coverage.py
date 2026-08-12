@@ -13,8 +13,9 @@ these paths overlap with the suite already in place.
 import logging
 
 import pytest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
+from app.core.cache import CacheManager
 from app.core.circuit_breaker import CircuitBreakerError
 from app.services.rag_pipeline import RAGPipeline, RAGResponse
 from app.services.retrieval import RetrievalResult
@@ -119,6 +120,108 @@ class TestCacheBranches:
         retriever.retrieve.assert_called_once()
         cache.set.assert_called_once()
         assert cache.set.call_args[0][1] is response
+
+
+class TestCacheKeyFilterIsolation:
+    """The cache key must distinguish queries that differ only by filter or
+    search mode, else one request returns another's cached result.
+
+    Reproduces a cross-filter data leak: with a REAL CacheManager (L1 active,
+    Redis down) and a retriever whose result set depends on ``filter_dict``,
+    a second query carrying a different filter used to hit the first query's
+    cache entry (same question/collection/top_k/rerank -> same key) and was
+    served the WRONG documents.
+    """
+
+    @staticmethod
+    def _real_cache():
+        with patch(
+            "app.core.cache.redis.from_url", side_effect=ConnectionError("no redis")
+        ):
+            return CacheManager(enabled=True)
+
+    @staticmethod
+    def _filter_aware_retriever():
+        retriever = Mock()
+
+        def retrieve(query, top_k, use_hybrid, filter_dict, collection):
+            dept = (filter_dict or {}).get("dept", "public")
+            return [
+                RetrievalResult(
+                    document=f"{dept.upper()} confidential document",
+                    score=0.9,
+                    metadata={"filename": f"{dept}.pdf"},
+                    source=f"{dept}.pdf",
+                )
+            ]
+
+        retriever.retrieve = retrieve
+        return retriever
+
+    def _pipeline(self, cache, retriever, llm_client):
+        return RAGPipeline(
+            retriever=retriever,
+            llm_client=llm_client,
+            cache_manager=cache,
+            reranker=None,
+            enable_circuit_breaker=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_different_filter_does_not_leak_cached_result(
+        self, llm_client, chat_completion
+    ):
+        _wire_llm(llm_client, chat_completion)
+        cache = self._real_cache()
+        pipeline = self._pipeline(cache, self._filter_aware_retriever(), llm_client)
+
+        finance = await pipeline.query(
+            "salary", top_k=5, use_hybrid=True,
+            filter_dict={"dept": "finance"}, rerank=False,
+        )
+        engineering = await pipeline.query(
+            "salary", top_k=5, use_hybrid=True,
+            filter_dict={"dept": "engineering"}, rerank=False,
+        )
+
+        # Same question/collection/top_k/rerank, but a DIFFERENT filter must
+        # NOT return the finance query's cached documents.
+        assert finance.sources[0]["document"] == "finance.pdf"
+        assert engineering.sources[0]["document"] == "engineering.pdf"
+
+    @pytest.mark.asyncio
+    async def test_different_search_mode_does_not_leak_cached_result(
+        self, llm_client, chat_completion
+    ):
+        _wire_llm(llm_client, chat_completion)
+        cache = self._real_cache()
+        # Retriever that returns a different document per search mode.
+        retriever = Mock()
+
+        def retrieve(query, top_k, use_hybrid, filter_dict, collection):
+            mode = "hybrid" if use_hybrid else "vector"
+            return [
+                RetrievalResult(
+                    document=f"{mode} result",
+                    score=0.9,
+                    metadata={"filename": f"{mode}.pdf"},
+                    source=f"{mode}.pdf",
+                )
+            ]
+
+        retriever.retrieve = retrieve
+        pipeline = self._pipeline(cache, retriever, llm_client)
+
+        hybrid = await pipeline.query(
+            "q", top_k=5, use_hybrid=True, filter_dict=None, rerank=False,
+        )
+        vector = await pipeline.query(
+            "q", top_k=5, use_hybrid=False, filter_dict=None, rerank=False,
+        )
+
+        assert hybrid.sources[0]["document"] == "hybrid.pdf"
+        assert vector.sources[0]["document"] == "vector.pdf"
+
 
 
 class TestCallLlmCircuitBreaker:

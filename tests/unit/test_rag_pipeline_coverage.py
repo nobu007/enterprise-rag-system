@@ -10,6 +10,8 @@ The existing test_rag_pipeline.py never wires a ``cache_manager`` and
 always leaves the circuit breaker enabled (its default), so none of
 these paths overlap with the suite already in place.
 """
+import logging
+
 import pytest
 from unittest.mock import AsyncMock, Mock
 
@@ -228,3 +230,70 @@ class TestConfidenceEdge:
         # top_score=-0.6, high_score_count=0, answer_length_factor=0.025:
         # pre-fix min(-0.295, 1.0) = -0.295 (negative!); post-fix -> 0.0.
         assert confidence == 0.0
+
+
+class TestCollectionLogInjection:
+    """CWE-117: a client-controlled ``collection`` must not forge log lines.
+
+    ``collection`` is the ``QueryRequest.collection`` body field; the query
+    route passes it straight through to ``RAGPipeline.query``
+    (``collection=... or "default"``). The retrieval log line at L243
+    interpolates it next to ``question``, so a CR/LF in a collection name
+    terminates the real log line and starts a forged one -- the same
+    log-injection class as the ``query`` body field (43166fa) and the
+    ``X-Request-ID`` header (b88a5c5), but a distinct client-controlled field
+    that the question-sweep missed. The validation middleware scans body
+    values for XSS/SQL/path/command but NOT control chars, so CR/LF reaches
+    this logger unfiltered.
+    """
+
+    @pytest.mark.asyncio
+    async def test_collection_crlf_neutralised_in_retrieval_log(
+        self, retriever, llm_client, chat_completion
+    ):
+        _wire_llm(llm_client, chat_completion)
+        retriever.retrieve.return_value = _results()
+        cache = Mock()
+        cache.generate_key.return_value = "k"
+        cache.get.return_value = None  # miss -> retrieval path -> L243 logs
+
+        pipeline = RAGPipeline(
+            retriever=retriever,
+            llm_client=llm_client,
+            llm_model="gpt-4",
+            cache_manager=cache,
+        )
+
+        # Capture the rag_pipeline logger's DEBUG records directly (robust to
+        # root-handler / level config, unlike caplog propagation).
+        rag_logger = logging.getLogger("app.services.rag_pipeline")
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(record)
+
+        handler = _Capture(logging.DEBUG)
+        rag_logger.addHandler(handler)
+        rag_logger.setLevel(logging.DEBUG)
+        try:
+            await pipeline.query(
+                "clean question",  # no control chars -> isolates `collection`
+                collection="hr-policies\nFAKE LOG line\r",
+            )
+        finally:
+            rag_logger.removeHandler(handler)
+
+        retrieval_msgs = [
+            r.getMessage()
+            for r in captured
+            if "Retrieving documents for" in r.getMessage()
+        ]
+        assert retrieval_msgs, "retrieval log line was not emitted"
+        msg = retrieval_msgs[0]
+        # No raw CR/LF survives -> the forged "FAKE LOG line" cannot start a
+        # new log line. Pre-fix the raw chr(10)/chr(13) were present.
+        assert "\n" not in msg
+        assert "\r" not in msg
+        # Escaped form is present -> value preserved, only log rep changed.
+        assert "hr-policies\\nFAKE LOG line\\r" in msg

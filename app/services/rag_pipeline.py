@@ -240,7 +240,11 @@ Answer:"""
                 metrics.cache_misses.labels(collection=collection).inc()
 
         # Step 1: Retrieve relevant documents
-        logger.debug(f"Retrieving documents for: {sanitize_for_log(question)} from collection: {collection}")
+        # ``collection`` is the client-controlled QueryRequest.collection body
+        # field (query route passes it through verbatim), so a CR/LF in it would
+        # forge a fake subsequent log line here -- sanitise it exactly like
+        # ``question`` in the same message (CWE-117, sibling of 43166fa).
+        logger.debug(f"Retrieving documents for: {sanitize_for_log(question)} from collection: {sanitize_for_log(collection)}")
 
         # Track retrieval metrics
         retrieval_start = time.time()

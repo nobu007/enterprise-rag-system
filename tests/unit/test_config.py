@@ -128,6 +128,35 @@ class TestEnvVarCaseInsensitive:
         # of 2.0 is not rejected at Settings load.
         assert _settings(monkeypatch, LLM_TEMPERATURE=good_temp).llm_temperature == float(good_temp)
 
+    @pytest.mark.parametrize("bad_tokens", ["0", "-1", "-5", "-100"])
+    def test_llm_max_tokens_rejected_below_one(self, monkeypatch, bad_tokens):
+        # llm_max_tokens is wired straight into the OpenAI chat completion
+        # call: main.py passes settings.llm_max_tokens to RAGPipeline
+        # (max_tokens=), which sends it as ``max_tokens=`` at
+        # rag_pipeline.py L117 (the non-streaming /query and /batch paths).
+        # Every LLM provider treats max_tokens as a positive integer; OpenAI
+        # rejects ``0`` / negatives per-request ("0 is less than the minimum
+        # of 1"). That BadRequestError is wrapped as RuntimeError in
+        # _call_llm, and the LLM circuit breaker (expected_exception=
+        # RuntimeError) counts it -- after failure_threshold=5 such failures
+        # the breaker opens and EVERY subsequent query 500s (a silently
+        # broken deployment). This is the same fail-open-to-brick mechanism
+        # as a negative llm_temperature. ge=1 enforces the universal lower
+        # bound so a misconfigured LLM_MAX_TOKENS=0 fails fast at Settings
+        # load instead of bricking the deployment one query at a time. Only
+        # the lower bound is enforced; the upper bound is model/context-window
+        # specific (deferred) and intentionally left unbounded (see below).
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, LLM_MAX_TOKENS=bad_tokens)
+
+    @pytest.mark.parametrize("good_tokens", ["1", "2", "2048", "100000"])
+    def test_llm_max_tokens_accepted_at_least_one(self, monkeypatch, good_tokens):
+        # 1 is the minimum useful cap. 100000 is included to lock in that the
+        # Field enforces ONLY the lower bound -- the upper bound (deferred,
+        # model/context-window-specific) must stay unbounded so a valid large
+        # max_tokens for a long-context model is not rejected at Settings load.
+        assert _settings(monkeypatch, LLM_MAX_TOKENS=good_tokens).llm_max_tokens == int(good_tokens)
+
 
 class TestEnvBindingAcrossFieldGroups:
     """Env binding must cover every field group and type, so dropping

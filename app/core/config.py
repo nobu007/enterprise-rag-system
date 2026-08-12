@@ -90,7 +90,22 @@ class Settings(BaseSettings):
     # ge=1). The UPPER bound is provider-specific (OpenAI <= 2, Anthropic <= 1)
     # and intentionally left unbounded here.
     llm_temperature: float = Field(0.7, ge=0.0)
-    llm_max_tokens: int = Field(2048)
+    # ``llm_max_tokens`` is wired straight into the OpenAI chat completion
+    # call: main.py passes settings.llm_max_tokens to RAGPipeline (max_tokens=),
+    # which sends it as ``max_tokens=`` at rag_pipeline.py L117 on the
+    # non-streaming /query and /batch paths. Every LLM provider treats
+    # max_tokens as a positive integer; OpenAI rejects ``0`` / negatives
+    # per-request ("0 is less than the minimum of 1"). That BadRequestError is
+    # wrapped as RuntimeError in _call_llm, and the LLM circuit breaker
+    # (expected_exception=RuntimeError) counts it -- after failure_threshold=5
+    # such failures the breaker opens and EVERY subsequent query 500s (a
+    # silently broken deployment), the same brick mechanism as a negative
+    # llm_temperature. Enforce the universal lower bound ge=1 so a misconfigured
+    # LLM_MAX_TOKENS=0 fails fast at Settings load (same fail-fast class as
+    # llm_temperature ge=0.0 / max_concurrent_requests ge=1). The UPPER bound
+    # is model / context-window-specific (deferred, provider-dependent) and
+    # intentionally left unbounded here.
+    llm_max_tokens: int = Field(2048, ge=1)
 
     # Performance
     enable_caching: bool = Field(True)

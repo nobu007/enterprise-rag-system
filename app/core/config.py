@@ -133,7 +133,18 @@ class Settings(BaseSettings):
     )
 
     # Request size limit (bytes)
-    max_request_size: int = Field(10 * 1024 * 1024)
+    # ``max_request_size`` feeds ``ValidationMiddleware`` (main.py wiring),
+    # whose ``_validate_content_length`` rejects any request whose
+    # ``Content-Length`` exceeds it with HTTP 413 (validation.py). That check
+    # runs on every POST/PUT/PATCH -- i.e. every /query, /batch/query, /ingest
+    # and /documents body. A value of 0 (or negative) therefore 413s *every*
+    # body-bearing request: the app boots and /health (GET, no body) stays 200,
+    # but the entire query+ingest surface is bricked -- a silently broken
+    # deployment, the same fail-fast class as ``max_concurrent_requests`` below.
+    # Enforce the universal lower bound ge=1 so a misconfigured
+    # MAX_REQUEST_SIZE (0 / negative) fails fast at Settings load. The UPPER
+    # bound is deployment-specific (memory budget) and intentionally unbounded.
+    max_request_size: int = Field(10 * 1024 * 1024, ge=1)
 
     # Rate Limiting
     rate_limit_enabled: bool = Field(True)

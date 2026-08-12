@@ -102,6 +102,28 @@ class TestEnvVarCaseInsensitive:
     def test_max_concurrent_requests_accepted_at_least_one(self, monkeypatch, good_concurrency):
         assert _settings(monkeypatch, MAX_CONCURRENT_REQUESTS=good_concurrency).max_concurrent_requests == int(good_concurrency)
 
+    @pytest.mark.parametrize("bad_size", ["0", "-1", "-5"])
+    def test_max_request_size_rejected_below_one(self, monkeypatch, bad_size):
+        # max_request_size feeds ValidationMiddleware (main.py wiring), whose
+        # _validate_content_length rejects any body whose Content-Length exceeds
+        # it with HTTP 413 (validation.py). That guard runs on every
+        # POST/PUT/PATCH -- every /query, /batch/query, /ingest and /documents
+        # body. A value of 0 (or negative) therefore 413s every body-bearing
+        # request: the app boots and /health stays 200, but the whole query+
+        # ingest surface is bricked (a silently broken deployment). The Field
+        # must enforce the same lower bound at Settings load so a misconfigured
+        # MAX_REQUEST_SIZE (0 / negative) fails fast with a clear ValidationError
+        # -- same fail-fast class as max_concurrent_requests ge=1 above.
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, MAX_REQUEST_SIZE=bad_size)
+
+    @pytest.mark.parametrize("good_size", ["1", "1048576", "10485760"])
+    def test_max_request_size_accepted_at_least_one(self, monkeypatch, good_size):
+        # 1 byte is the smallest useful cap (a tiny JSON body); 1 MiB and the
+        # 10 MiB default are normal deployments. The upper bound is
+        # deployment-specific (memory budget) and intentionally unbounded.
+        assert _settings(monkeypatch, MAX_REQUEST_SIZE=good_size).max_request_size == int(good_size)
+
     @pytest.mark.parametrize("bad_temp", ["-0.1", "-0.5", "-1", "-2.0"])
     def test_llm_temperature_rejected_negative(self, monkeypatch, bad_temp):
         # llm_temperature is wired straight into the OpenAI chat completion

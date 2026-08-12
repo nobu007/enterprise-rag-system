@@ -271,7 +271,39 @@ class TestBatchQueryEndpoint:
                 "What is NLP?"
             ],
             top_k=5,
-            collection='default'
+            collection='default',
+            use_hybrid=True,
+            rerank=True
+        )
+
+    def test_batch_query_forwards_use_hybrid_and_rerank(self, client, mock_rag_pipeline, sample_rag_response):
+        """Client-supplied use_hybrid/rerank must reach the pipeline.
+
+        Regression: the /query/batch route declared these fields on
+        BatchQueryRequest but omitted them from the batch_query() call, so
+        every batch item ran with the pipeline defaults (True/True) and a
+        client requesting semantic-only search (use_hybrid=False) silently
+        got hybrid results. The single /query route already forwarded them;
+        batch was the inconsistent outlier.
+        """
+        mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
+
+        response = client.post(
+            "/query/batch",
+            json={
+                "queries": ["semantic-only question"],
+                "use_hybrid": False,
+                "rerank": False
+            }
+        )
+
+        assert response.status_code == 200
+        mock_rag_pipeline.batch_query.assert_called_once_with(
+            questions=["semantic-only question"],
+            top_k=5,
+            collection='default',
+            use_hybrid=False,
+            rerank=False
         )
 
     def test_batch_query_empty_list(self, client, mock_rag_pipeline):

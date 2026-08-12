@@ -253,10 +253,21 @@ async def batch_query(
     """
     try:
         # Execute batch query
+        # Forward use_hybrid + rerank: BatchQueryRequest declares them (they
+        # appear in the OpenAPI schema / docs), but the pipeline call
+        # previously omitted them, so every batch item ran with the pipeline's
+        # hardcoded defaults (use_hybrid=True, rerank=True) regardless of what
+        # the client requested -- a client asking for semantic-only search
+        # (use_hybrid=False) silently got hybrid results, a wrong-answer
+        # silent-parameter-drop. The single /query route already forwards
+        # these (mirrored here); batch was the inconsistent outlier.
+        # ``batch_query`` forwards its **kwargs to ``pipeline.query``.
         results = await pipeline.batch_query(
             questions=batch_req.queries,
             top_k=batch_req.top_k,
-            collection=batch_req.collection or "default"
+            collection=batch_req.collection or "default",
+            use_hybrid=batch_req.use_hybrid,
+            rerank=batch_req.rerank
         )
 
         responses = []

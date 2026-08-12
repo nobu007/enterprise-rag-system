@@ -724,3 +724,116 @@ class TestValidationMiddlewareIsolated:
             "Error validating request body" in record.message
             for record in caplog.records
         )
+
+    # ------------------------------------------------------------------
+    # request.client is None (ASGI spec: peer info optional). TestClient
+    # always populates it, so these branches are exercised by hand-building
+    # the scope with client=None and driving dispatch() directly.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _request_client_none(body: bytes, method: str = "POST") -> Request:
+        """Build a real Request whose ASGI scope carries ``client=None``.
+
+        The body is delivered via the receive channel so ``dispatch()``'s
+        ``await request.body()`` resolves it. ``client=None`` is ASGI-spec-
+        legal (the server may omit peer info); TestClient never produces it.
+        """
+        scope = {
+            "type": "http",
+            "method": method,
+            "path": "/",
+            "query_string": b"",
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+            "client": None,
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        return Request(scope, receive=receive)
+
+    async def test_client_none_malicious_body_still_rejected(self):
+        """A malicious body is rejected (400) even when ``request.client`` is None.
+
+        Regression: the detection loggers in ``_validate_string_value``
+        dereferenced ``request.client.host`` unconditionally. ``request.client``
+        is an OPTIONAL ``(host, port)`` tuple per the ASGI spec and is ``None``
+        when the server omits peer info. With ``client=None``, detecting a
+        malicious payload crashed the logger with ``AttributeError`` BEFORE the
+        ``HTTPException(400)`` was raised; that ``AttributeError`` was then
+        swallowed by ``_validate_request_body``'s broad ``except Exception``
+        (fail-open: "log and continue"), aborting validation so the payload
+        reached the handler UNVALIDATED — a fail-open *bypass* that is the
+        ``client=None`` sibling of the RecursionError case
+        (``test_deeply_nested_json_rejected_not_swallowed``). Before the guard
+        this returned 200.
+        """
+        mw = self._make_middleware()
+
+        async def call_next(request):
+            return JSONResponse({"ok": True})
+
+        request = self._request_client_none(
+            b'{"query": "1 UNION SELECT password FROM users"}'
+        )
+        response = await mw.dispatch(request, call_next)
+        assert response.status_code == 400
+        assert b"SQL injection" in response.body
+
+    async def test_client_none_xss_body_still_rejected(self):
+        """XSS payload + ``client=None`` is rejected (second detection logger)."""
+        mw = self._make_middleware()
+
+        async def call_next(request):
+            return JSONResponse({"ok": True})
+
+        request = self._request_client_none(b'{"q": "<script>alert(1)</script>"}')
+        response = await mw.dispatch(request, call_next)
+        assert response.status_code == 400
+        assert b"XSS" in response.body
+
+    async def test_client_none_clean_body_not_over_blocked(self):
+        """A benign body with ``client=None`` is not over-blocked (200)."""
+        mw = self._make_middleware()
+
+        async def call_next(request):
+            return JSONResponse({"ok": True})
+
+        request = self._request_client_none(b'{"query": "a normal question"}')
+        response = await mw.dispatch(request, call_next)
+        assert response.status_code == 200
+
+    async def test_client_none_suspicious_header_no_crash(self):
+        """A spoofing header with ``client=None`` no longer crashes the request.
+
+        ``_validate_headers`` logs ``request.client.host`` when a recognized
+        spoofing header (e.g. X-Forwarded-Host) is seen. With ``client=None``
+        this raised ``AttributeError`` inside ``dispatch``'s try block; not an
+        ``HTTPException``, it bypassed the rejection handler and surfaced as a
+        500. The guarded logger now degrades to "unknown" and the (non-blocking)
+        suspicious-header request proceeds normally.
+        """
+        mw = self._make_middleware()
+
+        async def call_next(request):
+            return JSONResponse({"ok": True})
+
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "query_string": b"",
+            "headers": [(b"x-forwarded-host", b"evil.example")],
+            "client": None,
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = Request(scope, receive=receive)
+        response = await mw.dispatch(request, call_next)
+        assert response.status_code == 200

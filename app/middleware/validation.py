@@ -23,6 +23,24 @@ from app.core.security import SecurityValidator
 logger = logging.getLogger(__name__)
 
 
+def _client_host(request: Request) -> str:
+    """Best-effort client host for rejection/suspicion logging.
+
+    ``request.client`` is an OPTIONAL ``(host, port)`` tuple per the ASGI spec
+    and is ``None`` whenever the server did not supply peer info (certain
+    reverse-proxy / internal-call paths). The middleware's rejection logging
+    previously dereferenced ``request.client.host`` unconditionally; when
+    ``client`` is ``None`` that raised ``AttributeError`` — and because
+    ``_validate_request_body`` swallows any non-``HTTPException`` error
+    (fail-open: "log and continue"), a malicious payload *detected* during
+    validation crashed the logger BEFORE the ``HTTPException(400)`` was raised,
+    so the broad ``except`` aborted validation and the payload reached the
+    handler UNVALIDATED (HTTP 200). Mirrors the ``None`` guard already present
+    in ``rate_limit.get_client_ip``.
+    """
+    return request.client.host if request.client else "unknown"
+
+
 class ValidationMiddleware(BaseHTTPMiddleware):
     """
     Middleware for validating requests and adding security headers.
@@ -92,7 +110,7 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             if self.log_suspicious:
                 logger.info(
                     f"Request rejected ({exc.status_code}): {exc.detail} "
-                    f"- Client: {request.client.host}"
+                    f"- Client: {_client_host(request)}"
                 )
             return JSONResponse(
                 status_code=exc.status_code,
@@ -247,28 +265,28 @@ class ValidationMiddleware(BaseHTTPMiddleware):
         if self.validator.detect_xss(value):
             msg = f"Potentially malicious content (XSS) in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                logger.warning(f"{msg} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
         # SQL injection detection
         if self.validator.detect_sql_injection(value):
             msg = f"SQL injection pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                logger.warning(f"{msg} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
         # Path traversal detection
         if self.validator.detect_path_traversal(value):
             msg = f"Path traversal pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                logger.warning(f"{msg} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
         # Command injection detection
         if self.validator.detect_command_injection(value):
             msg = f"Command injection pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                logger.warning(f"{msg} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
     async def _validate_headers(self, request: Request):
@@ -297,7 +315,7 @@ class ValidationMiddleware(BaseHTTPMiddleware):
 
         for header in suspicious_headers:
             if header in request.headers:
-                logger.info(f"Suspicious header detected: {header} from {request.client.host}")
+                logger.info(f"Suspicious header detected: {header} from {_client_host(request)}")
 
     async def _add_security_headers(self, request: Request, response: Response):
         """

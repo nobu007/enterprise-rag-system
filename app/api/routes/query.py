@@ -445,9 +445,19 @@ async def stream_query(
                     # 'await' expression`` on every streaming request in production
                     # (the route was the inconsistent outlier vs. the two sync
                     # pipeline callers).
+                    #
+                    # Overfetch a larger candidate pool when reranking (mirror
+                    # RAGPipeline.query: ``top_k=50 if rerank and self.reranker
+                    # else top_k``), then let ``rerank_results`` narrow back to the
+                    # request top_k. Passing the request top_k straight through
+                    # gave the cross-encoder only the retriever's own top_k to
+                    # work with -- it could reorder them but never promote a doc
+                    # ranked just below the cutoff -- so an identical query with
+                    # rerank=True got materially weaker re-ranking on this route
+                    # than on /query (which re-evaluates a 50-doc pool).
                     results = pipeline.retriever.retrieve(
                         query=query,
-                        top_k=top_k,
+                        top_k=50 if rerank and pipeline.reranker else top_k,
                         use_hybrid=use_hybrid,
                         filter_dict=filter_dict,
                         collection=collection

@@ -182,6 +182,75 @@ class TestStreamQueryRerankBranch:
         assert calls[0] and isinstance(calls[0][0], RetrievalResult)
 
 
+class TestStreamRetrieveOverfetchContract:
+    """Regression guard: when reranking, retriever_func must overfetch a larger
+    candidate pool and let ``rerank_results`` narrow to the request top_k --
+    mirroring ``RAGPipeline.query`` (``top_k=50 if rerank and self.reranker
+    else top_k`` at rag_pipeline.py:258).
+
+    The streaming route previously passed the request ``top_k`` straight to
+    ``retrieve`` and then reranked among exactly those candidates. A
+    cross-encoder can only *reorder* the retriever's own top_k that way; it can
+    never promote a document the retriever ranked just below the cutoff. So a
+    client sending the identical query with ``rerank=True`` got materially
+    weaker re-ranking from ``/query/stream`` than from ``/query`` (which
+    re-evaluates a 50-doc pool) -- a silent quality inconsistency between the
+    sibling routes. The route's own comment states it intends to "Mirror
+    RAGPipeline's use of rerank_results", so the overfetch is the missing half
+    of that mirror.
+    """
+
+    def test_overfetches_50_when_rerank_enabled(self, app_with_overrides):
+        app, pipeline, llm = app_with_overrides
+        reranker = Mock()
+        reranker.rerank_results = lambda query, results, top_k=None, **kw: list(results)
+        pipeline.reranker = reranker
+        pipeline.retriever.retrieve = Mock(return_value=[_retrieval_result()])
+
+        client = TestClient(app)
+        # Request top_k=5 with rerank=True -> retrieve must widen to 50.
+        resp = client.post("/query/stream", json={
+            "query": "What is RAG?", "top_k": 5, "rerank": True,
+        })
+
+        assert resp.status_code == 200
+        assert pipeline.retriever.retrieve.called
+        assert pipeline.retriever.retrieve.call_args.kwargs["top_k"] == 50, (
+            "rerank path must overfetch 50 candidates (matching RAGPipeline.query), "
+            "not the request top_k"
+        )
+
+    def test_no_overfetch_when_rerank_disabled(self, app_with_overrides):
+        app, pipeline, llm = app_with_overrides
+        pipeline.reranker = Mock()  # present, but the client opts out of rerank
+        pipeline.retriever.retrieve = Mock(return_value=[_retrieval_result()])
+
+        client = TestClient(app)
+        resp = client.post("/query/stream", json={
+            "query": "What is RAG?", "top_k": 5, "rerank": False,
+        })
+
+        assert resp.status_code == 200
+        assert pipeline.retriever.retrieve.call_args.kwargs["top_k"] == 5, (
+            "non-rerank path must retrieve exactly the request top_k"
+        )
+
+    def test_no_overfetch_when_reranker_absent(self, app_with_overrides):
+        app, pipeline, llm = app_with_overrides
+        # pipeline.reranker is None by default; rerank=True but nothing to rerank with.
+        pipeline.retriever.retrieve = Mock(return_value=[_retrieval_result()])
+
+        client = TestClient(app)
+        resp = client.post("/query/stream", json={
+            "query": "What is RAG?", "top_k": 5, "rerank": True,
+        })
+
+        assert resp.status_code == 200
+        assert pipeline.retriever.retrieve.call_args.kwargs["top_k"] == 5, (
+            "no reranker -> no overfetch, retrieve the request top_k"
+        )
+
+
 class TestStreamQueryErrorHandlers:
     """Cover L479-488 (ValueError->400, generic->500) and L462-466 (in-stream)."""
 

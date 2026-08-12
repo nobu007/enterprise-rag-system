@@ -78,7 +78,18 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     llm_model: str = Field("gpt-4-turbo-preview")
-    llm_temperature: float = Field(0.7)
+    # ``llm_temperature`` is wired straight into the OpenAI chat completion
+    # call: main.py passes settings.llm_temperature to RAGPipeline, which sends
+    # it as ``temperature=`` at rag_pipeline.py L116/L422 and streaming.py
+    # L149. Every LLM provider defines a non-negative sampling temperature
+    # (0 = deterministic); a negative value is meaningless and the provider
+    # rejects it per-request. Without a Settings bound a misconfigured
+    # LLM_TEMPERATURE=-0.5 lets the app boot and then 500 every query (a
+    # silently broken deployment). Enforce the universal lower bound ge=0.0 so
+    # it fails fast at Settings load (same class as max_concurrent_requests
+    # ge=1). The UPPER bound is provider-specific (OpenAI <= 2, Anthropic <= 1)
+    # and intentionally left unbounded here.
+    llm_temperature: float = Field(0.7, ge=0.0)
     llm_max_tokens: int = Field(2048)
 
     # Performance

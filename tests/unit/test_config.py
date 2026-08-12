@@ -102,6 +102,32 @@ class TestEnvVarCaseInsensitive:
     def test_max_concurrent_requests_accepted_at_least_one(self, monkeypatch, good_concurrency):
         assert _settings(monkeypatch, MAX_CONCURRENT_REQUESTS=good_concurrency).max_concurrent_requests == int(good_concurrency)
 
+    @pytest.mark.parametrize("bad_temp", ["-0.1", "-0.5", "-1", "-2.0"])
+    def test_llm_temperature_rejected_negative(self, monkeypatch, bad_temp):
+        # llm_temperature is wired straight into the OpenAI chat completion
+        # call: main.py passes settings.llm_temperature to RAGPipeline, which
+        # stores it and sends it as ``temperature=`` at rag_pipeline.py L116 /
+        # L422 and streaming.py L149. Every LLM provider defines a non-negative
+        # sampling temperature (0 = deterministic); a negative value is
+        # meaningless and the provider rejects it per-request. Without a
+        # Settings bound, a misconfigured LLM_TEMPERATURE=-0.5 lets the app
+        # boot and then 500 every query (a silently broken deployment). The
+        # Field must reject it at Settings load -- same fail-fast class as
+        # max_concurrent_requests ge=1 above. Only the universal lower bound is
+        # enforced; the upper bound is provider-specific (OpenAI <= 2, Anthropic
+        # <= 1) and intentionally left unbounded (see the accepted test below).
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, LLM_TEMPERATURE=bad_temp)
+
+    @pytest.mark.parametrize("good_temp", ["0", "0.0", "0.7", "1", "2.0"])
+    def test_llm_temperature_accepted_non_negative(self, monkeypatch, good_temp):
+        # 0 is valid (deterministic). Positive values are accepted up to each
+        # provider's own maximum: 2.0 is included here to lock in that the
+        # Field enforces ONLY the lower bound -- the upper bound (deferred,
+        # provider-specific) must stay unbounded so a valid OpenAI temperature
+        # of 2.0 is not rejected at Settings load.
+        assert _settings(monkeypatch, LLM_TEMPERATURE=good_temp).llm_temperature == float(good_temp)
+
 
 class TestEnvBindingAcrossFieldGroups:
     """Env binding must cover every field group and type, so dropping

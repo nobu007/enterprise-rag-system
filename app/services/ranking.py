@@ -102,9 +102,20 @@ class QueryResultRanker:
         """
         features = {}
 
-        # Semantic similarity score (normalized)
+        # Semantic similarity score (normalized). Fall back to
+        # ``relevance_score``: the live /query and /query/batch routes feed
+        # ``RAGPipeline.query``'s source dicts, whose score field is
+        # ``relevance_score`` (the API contract -- see rag_pipeline.py source
+        # construction and SourceDocument.relevance_score in schemas.py).
+        # Without the fallback the ranker reads 0.0 for every result, so all
+        # tie on an identical ranking_score and ``rank_results=True`` becomes a
+        # silent no-op that only bolts on ``ranking_score``/``ranking_features``
+        # keys (and logs "Applied learning-to-rank") without reordering
+        # anything. ``rank_rag_results`` and the feature tests build dicts with
+        # ``score`` directly, so the primary key is still honored.
+        raw_score = result.get('score', result.get('relevance_score', 0.0))
         features['semantic_score'] = (
-            result.get('score', 0.0) / max_score
+            raw_score / max_score
             if max_score > 0 else 0.0
         )
 
@@ -250,9 +261,13 @@ class QueryResultRanker:
 
         query_length = len(query.split())
 
-        # Find max score for normalization
+        # Find max score for normalization. Honor ``relevance_score`` too --
+        # see extract_features: the live routes feed pipeline source dicts
+        # whose score field is ``relevance_score``, so normalizing on
+        # ``score`` alone would leave max_score at 0 (reset to 1.0) and every
+        # semantic_score at 0, making the ``rank_results=True`` opt-in a no-op.
         max_score = max(
-            (r.get('score', 0.0) for r in results),
+            (r.get('score', r.get('relevance_score', 0.0)) for r in results),
             default=1.0
         )
         if max_score == 0:

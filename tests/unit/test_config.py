@@ -179,6 +179,32 @@ class TestEnvVarCaseInsensitive:
         # max_tokens for a long-context model is not rejected at Settings load.
         assert _settings(monkeypatch, LLM_MAX_TOKENS=good_tokens).llm_max_tokens == int(good_tokens)
 
+    @pytest.mark.parametrize("bad_ttl", ["0", "-1", "-5", "-100"])
+    def test_cache_ttl_seconds_rejected_below_one(self, monkeypatch, bad_ttl):
+        # cache_ttl_seconds feeds CacheManager (main.py wiring) as self.ttl and
+        # is consumed two ways: the L2 Redis write
+        # ``redis_client.setex(key, ttl or self.ttl, ...)`` (cache.py) -- Redis
+        # SETEX requires seconds > 0 and errors on 0 / negative ("invalid expire
+        # time"), which the setter swallows into a per-store warning; and the L1
+        # in-memory TTL ``time.time() - timestamp < self.ttl`` -- ttl <= 0 makes
+        # every entry instantly expired so L1 never hits either. A misconfigured
+        # CACHE_TTL_SECONDS=0 therefore silently disables the entire cache (L2
+        # warns on every write, L1 never serves) -- a silently-degraded
+        # deployment; the proper disable path is CACHE_ENABLED=false, not ttl=0.
+        # ge=1 enforces the Redis-mandated lower bound so a misconfigured
+        # CACHE_TTL_SECONDS fails fast at Settings load -- same fail-fast class
+        # as max_request_size ge=1 / llm_max_tokens ge=1.
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, CACHE_TTL_SECONDS=bad_ttl)
+
+    @pytest.mark.parametrize("good_ttl", ["1", "60", "3600", "604800"])
+    def test_cache_ttl_seconds_accepted_at_least_one(self, monkeypatch, good_ttl):
+        # 1 is the minimum useful TTL (1-second cache). 3600 is the default;
+        # 604800 (7 days) locks in that the Field enforces ONLY the lower bound
+        # -- the upper bound (deferred, retention-policy-specific) must stay
+        # unbounded so a valid long-lived cache is not rejected at Settings load.
+        assert _settings(monkeypatch, CACHE_TTL_SECONDS=good_ttl).cache_ttl_seconds == int(good_ttl)
+
 
 class TestEnvBindingAcrossFieldGroups:
     """Env binding must cover every field group and type, so dropping

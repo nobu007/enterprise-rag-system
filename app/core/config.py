@@ -109,7 +109,9 @@ class Settings(BaseSettings):
 
     # Performance
     enable_caching: bool = Field(True)
-    cache_ttl_seconds: int = Field(3600)
+    # Re-declared in the Redis Cache Configuration section below (last-wins);
+    # the ge=1 bound + rationale live there.
+    cache_ttl_seconds: int = Field(3600, ge=1)
     max_workers: int = Field(4)
 
     # Monitoring
@@ -166,7 +168,22 @@ class Settings(BaseSettings):
     redis_db: int = Field(0)
     redis_password: Optional[str] = Field(None)
     cache_enabled: bool = Field(True)
-    cache_ttl_seconds: int = Field(3600)
+    # ``cache_ttl_seconds`` feeds ``CacheManager`` (main.py wiring), stored as
+    # ``self.ttl`` (cache.py) and consumed two ways: (1) the L2 Redis write at
+    # cache.py ``redis_client.setex(key, ttl or self.ttl, ...)`` -- Redis SETEX
+    # requires seconds > 0 and errors on 0 / negative ("invalid expire time"),
+    # which the setter swallows into a per-store warning; (2) the L1 in-memory
+    # TTL at cache.py ``time.time() - timestamp < self.ttl`` -- ttl <= 0 makes
+    # every entry instantly expired, so L1 never hits either. A misconfigured
+    # CACHE_TTL_SECONDS=0 therefore silently disables the entire cache (L2 warns
+    # on every write, L1 never serves) -- a silently-degraded deployment whose
+    # only symptom is slower responses. The proper disable path is
+    # ``cache_enabled=False`` above, not ttl=0. Enforce the Redis-mandated lower
+    # bound ge=1 so a misconfigured CACHE_TTL_SECONDS (0 / negative) fails fast
+    # at Settings load -- same fail-fast class as max_request_size ge=1 /
+    # llm_max_tokens ge=1. The UPPER bound is deployment-specific (retention
+    # policy) and intentionally left unbounded.
+    cache_ttl_seconds: int = Field(3600, ge=1)
 
     # Celery Configuration
     celery_broker_url: str = Field("redis://localhost:6379/1")

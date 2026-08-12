@@ -389,8 +389,6 @@ celery -A app.tasks.batch_tasks worker --loglevel=info --queues=batch_processing
 celery -A app.tasks.batch_tasks flower --port=5555
 ```
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 ### Document Validation
 
 All documents are automatically validated before ingestion to ensure quality and security:
@@ -456,9 +454,10 @@ When documents fail validation during ingestion, the API returns:
         "errors": ["[EMPTY_CONTENT] Document content is empty"]
       }
     ]
-=======
-=======
->>>>>>> Stashed changes
+  }
+}
+```
+
 ### 📚 Document Versioning (New!)
 
 **Track document changes with full audit trail and rollback capability**
@@ -609,19 +608,10 @@ curl -X DELETE http://localhost:8000/documents/versioning/policy-001
     "created_by": "admin@company.com",
     "change_summary": "Extended remote work allowance",
     "file_size_bytes": 1120
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
   }
 }
 ```
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-=======
->>>>>>> Stashed changes
 **Statistics Response:**
 ```json
 {
@@ -642,10 +632,6 @@ curl -X DELETE http://localhost:8000/documents/versioning/policy-001
 - **Analysis**: Understand document evolution over time
 - **Backup**: Automatic version history provides recovery options
 
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 ### Rate Limiting
 
 The API implements rate limiting to prevent abuse and ensure fair resource allocation:

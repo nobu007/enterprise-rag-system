@@ -20,7 +20,7 @@ from app.core import metrics
 from app.core.concurrency import get_concurrency_limiter
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
-from app.api.routes import query, health, ingest
+from app.api.routes import query, health, ingest, relationships
 from app.middleware.validation import ValidationMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from openai import AsyncOpenAI
@@ -245,6 +245,7 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
+app.include_router(relationships.router, prefix="/api/v1", tags=["Relationships"])
 
 
 @app.get("/", tags=["Health"])

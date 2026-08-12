@@ -389,6 +389,7 @@ celery -A app.tasks.batch_tasks worker --loglevel=info --queues=batch_processing
 celery -A app.tasks.batch_tasks flower --port=5555
 ```
 
+<<<<<<< Updated upstream
 ### Document Validation
 
 All documents are automatically validated before ingestion to ensure quality and security:
@@ -454,10 +455,185 @@ When documents fail validation during ingestion, the API returns:
         "errors": ["[EMPTY_CONTENT] Document content is empty"]
       }
     ]
+=======
+### 📚 Document Versioning (New!)
+
+**Track document changes with full audit trail and rollback capability**
+
+#### Features
+
+- **Automatic Versioning**: Every document update creates a new version
+- **Content Integrity**: SHA-256 hashing for content verification
+- **Rollback Support**: Revert to any previous version
+- **Audit Trail**: Complete history of who changed what and when
+- **Optimistic Locking**: Prevent conflicting updates
+- **Version Comparison**: Compare any two versions side-by-side
+
+#### API Endpoints
+
+##### Create Versioned Document
+
+```bash
+curl -X POST http://localhost:8000/documents/versioning \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document_id": "policy-001",
+    "content": "Remote work is allowed up to 3 days per week...",
+    "metadata": {
+      "category": "HR Policy",
+      "author": "admin@company.com",
+      "department": "Human Resources"
+    },
+    "change_summary": "Initial remote work policy",
+    "created_by": "admin@company.com"
+  }'
+```
+
+##### Update Document (Creates New Version)
+
+```bash
+curl -X PUT http://localhost:8000/documents/versioning/policy-001 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Remote work is now allowed up to 5 days per week...",
+    "metadata": {
+      "reviewed": true,
+      "approved_by": "CTO"
+    },
+    "change_summary": "Extended remote work allowance",
+    "updated_by": "admin@company.com",
+    "expected_version": 1
+  }'
+```
+
+##### Get Version History
+
+```bash
+# Get version history (without full content)
+curl http://localhost:8000/documents/versioning/policy-001/history
+
+# Get version history with full content
+curl "http://localhost:8000/documents/versioning/policy-001/history?include_content=true"
+```
+
+##### Rollback to Previous Version
+
+```bash
+curl -X POST http://localhost:8000/documents/versioning/policy-001/rollback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_version": 1,
+    "rolled_back_by": "admin@company.com",
+    "change_summary": "Reverting policy update pending review"
+  }'
+```
+
+##### Compare Versions
+
+```bash
+curl "http://localhost:8000/documents/versioning/policy-001/compare?version1=1&version2=3"
+```
+
+##### Get Specific Version
+
+```bash
+curl http://localhost:8000/documents/versioning/policy-001/versions/2
+```
+
+##### List All Versioned Documents
+
+```bash
+curl http://localhost:8000/documents/versioning
+```
+
+##### Get Versioning Statistics
+
+```bash
+curl http://localhost:8000/documents/versioning/stats
+```
+
+##### Delete Document (All Versions)
+
+```bash
+curl -X DELETE http://localhost:8000/documents/versioning/policy-001
+```
+
+#### Response Examples
+
+**Version History Response:**
+```json
+{
+  "document_id": "policy-001",
+  "current_version": 3,
+  "total_versions": 3,
+  "versions": [
+    {
+      "version_number": 1,
+      "created_at": "2025-01-01T10:00:00",
+      "created_by": "admin@company.com",
+      "change_summary": "Initial remote work policy",
+      "content_hash": "abc123...",
+      "file_size_bytes": 1024
+    },
+    {
+      "version_number": 2,
+      "created_at": "2025-01-02T14:30:00",
+      "created_by": "admin@company.com",
+      "change_summary": "Extended remote work allowance",
+      "content_hash": "def456...",
+      "file_size_bytes": 1120
+    }
+  ]
+}
+```
+
+**Version Comparison Response:**
+```json
+{
+  "document_id": "policy-001",
+  "version1": 1,
+  "version2": 2,
+  "content_same": false,
+  "size_difference_bytes": 96,
+  "version1_info": {
+    "created_at": "2025-01-01T10:00:00",
+    "created_by": "admin@company.com",
+    "change_summary": "Initial remote work policy",
+    "file_size_bytes": 1024
+  },
+  "version2_info": {
+    "created_at": "2025-01-02T14:30:00",
+    "created_by": "admin@company.com",
+    "change_summary": "Extended remote work allowance",
+    "file_size_bytes": 1120
+>>>>>>> Stashed changes
   }
 }
 ```
 
+<<<<<<< Updated upstream
+=======
+**Statistics Response:**
+```json
+{
+  "total_documents": 150,
+  "total_versions": 425,
+  "total_storage_bytes": 5242880,
+  "total_storage_mb": 5.0,
+  "unique_contributors": 12,
+  "average_versions_per_document": 2.83
+}
+```
+
+#### Use Cases
+
+- **Compliance**: Complete audit trail for regulated documents
+- **Collaboration**: Track changes across multiple contributors
+- **Safety**: Easy rollback from accidental or mistaken changes
+- **Analysis**: Understand document evolution over time
+- **Backup**: Automatic version history provides recovery options
+
+>>>>>>> Stashed changes
 ### Rate Limiting
 
 The API implements rate limiting to prevent abuse and ensure fair resource allocation:

@@ -83,6 +83,73 @@ class BatchStatusResponse(BaseModel):
     error: Optional[str] = Field(None, description="Error message if failed")
 
 
+# Versioning models
+class DocumentVersionCreate(BaseModel):
+    """Request model for creating a versioned document"""
+    document_id: str = Field(..., description="Unique document identifier")
+    content: str = Field(..., description="Document content")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Document metadata")
+    change_summary: str = Field("Initial version", description="Description of the change")
+    created_by: str = Field("system", description="User or system creating the document")
+
+
+class DocumentVersionUpdate(BaseModel):
+    """Request model for updating a versioned document"""
+    content: str = Field(..., description="New document content")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="New metadata (merged with existing)")
+    change_summary: str = Field("Document updated", description="Description of the change")
+    updated_by: str = Field("system", description="User or system updating the document")
+    expected_version: Optional[int] = Field(None, description="Expected current version for optimistic locking")
+
+
+class DocumentVersionRollback(BaseModel):
+    """Request model for rolling back to a previous version"""
+    target_version: int = Field(..., description="Version number to rollback to", ge=1)
+    rolled_back_by: str = Field("system", description="User or system performing rollback")
+    change_summary: Optional[str] = Field(None, description="Custom change summary (auto-generated if not provided)")
+
+
+class DocumentVersionInfo(BaseModel):
+    """Information about a document version"""
+    version_number: int
+    created_at: str
+    created_by: str
+    change_summary: str
+    content_hash: str
+    file_size_bytes: int
+    content: Optional[str] = None
+    metadata_preview: Optional[Dict[str, Any]] = None
+
+
+class VersionHistoryResponse(BaseModel):
+    """Response model for version history"""
+    document_id: str
+    current_version: int
+    total_versions: int
+    versions: List[DocumentVersionInfo]
+
+
+class VersionComparisonResponse(BaseModel):
+    """Response model for version comparison"""
+    document_id: str
+    version1: int
+    version2: int
+    content_same: bool
+    size_difference_bytes: int
+    version1_info: Dict[str, Any]
+    version2_info: Dict[str, Any]
+
+
+class VersioningStatsResponse(BaseModel):
+    """Response model for versioning statistics"""
+    total_documents: int
+    total_versions: int
+    total_storage_bytes: int
+    total_storage_mb: float
+    unique_contributors: int
+    average_versions_per_document: float
+
+
 @router.post(
     "/ingest",
     response_model=DocumentIngestResponse,
@@ -701,4 +768,602 @@ async def get_batch_status(task_id: str) -> BatchStatusResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve task status: {str(e)}"
+        )
+
+
+# ========== Versioning Endpoints ==========
+
+def _get_versioning_service():
+    """Get or create versioning service instance"""
+    from app.services.versioning import DocumentVersioningService
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    storage_path = getattr(settings, 'versioning_storage_path', './data/versioning')
+    return DocumentVersioningService(storage_path=storage_path)
+
+
+@router.post(
+    "/versioning",
+    response_model=DocumentVersionInfo,
+    summary="Create Versioned Document / バージョン管理ドキュメント作成",
+    description="Create a new document with version tracking enabled / バージョン管理が有効な新しいドキュメントを作成します",
+    response_description="Created document version information / 作成されたドキュメントバージョン情報",
+    responses={
+        200: {"description": "Document created successfully / ドキュメント作成成功"},
+        400: {"description": "Document already exists or invalid parameters / ドキュメントが既に存在するか不正なパラメータ"},
+        500: {"description": "Creation failed / 作成失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def create_versioned_document(request: DocumentVersionCreate) -> DocumentVersionInfo:
+    """
+    Create a new document with version tracking / バージョン管理付きで新しいドキュメントを作成します
+
+    ## Features / 機能
+
+    - **Automatic Versioning**: Every document starts at version 1 / すべてのドキュメントはバージョン1から開始
+    - **Content Hashing**: SHA-256 hash for integrity verification / 完全性検証のためのSHA-256ハッシュ
+    - **Audit Trail**: Tracks who created the document and when / 作成者と作成日時の記録
+
+    ## Example / 例
+
+    ```json
+    {
+      "document_id": "doc-001",
+      "content": "This is the initial document content...",
+      "metadata": {"source": "policy.pdf", "category": "HR"},
+      "change_summary": "Initial HR policy document",
+      "created_by": "admin@company.com"
+    }
+    ```
+
+    Args:
+        request: Document creation request
+
+    Returns:
+        DocumentVersionInfo with version details
+    """
+    try:
+        service = _get_versioning_service()
+
+        version = service.create_document(
+            document_id=request.document_id,
+            content=request.content,
+            metadata=request.metadata,
+            created_by=request.created_by,
+            change_summary=request.change_summary
+        )
+
+        return DocumentVersionInfo(
+            version_number=version.version_number,
+            created_at=version.created_at,
+            created_by=version.created_by,
+            change_summary=version.change_summary,
+            content_hash=version.content_hash,
+            file_size_bytes=version.file_size_bytes,
+            content=version.content,
+            metadata_preview=version.metadata
+        )
+
+    except Exception as e:
+        if "already exists" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create document: {str(e)}"
+        )
+
+
+@router.put(
+    "/versioning/{document_id}",
+    response_model=DocumentVersionInfo,
+    summary="Update Versioned Document / バージョン管理ドキュメント更新",
+    description="Update a document and create a new version / ドキュメントを更新して新しいバージョンを作成します",
+    response_description="New document version information / 新しいドキュメントバージョン情報",
+    responses={
+        200: {"description": "Document updated successfully / ドキュメント更新成功"},
+        404: {"description": "Document not found / ドキュメントが見つからない"},
+        409: {"description": "Version conflict / バージョン衝突"},
+        500: {"description": "Update failed / 更新失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def update_versioned_document(
+    document_id: str,
+    request: DocumentVersionUpdate
+) -> DocumentVersionInfo:
+    """
+    Update a versioned document / バージョン管理ドキュメントを更新します
+
+    ## Features / 機能
+
+    - **Automatic Versioning**: Creates new version on each update / 更新ごとに新しいバージョンを作成
+    - **Optimistic Locking**: Optional version conflict detection / オプションのバージョン衝突検出
+    - **Metadata Merging**: New metadata merged with existing / 新しいメタデータを既存とマージ
+
+    ## Example / 例
+
+    ```json
+    {
+      "content": "Updated document content...",
+      "metadata": {"category": "Updated HR", "reviewed": true},
+      "change_summary": "Updated HR policy with new benefits section",
+      "updated_by": "admin@company.com",
+      "expected_version": 1
+    }
+    ```
+
+    Args:
+        document_id: Document identifier
+        request: Update request
+
+    Returns:
+        DocumentVersionInfo for the new version
+    """
+    try:
+        service = _get_versioning_service()
+
+        version = service.update_document(
+            document_id=document_id,
+            content=request.content,
+            metadata=request.metadata,
+            updated_by=request.updated_by,
+            change_summary=request.change_summary,
+            expected_version=request.expected_version
+        )
+
+        return DocumentVersionInfo(
+            version_number=version.version_number,
+            created_at=version.created_at,
+            created_by=version.created_by,
+            change_summary=version.change_summary,
+            content_hash=version.content_hash,
+            file_size_bytes=version.file_size_bytes,
+            content=version.content,
+            metadata_preview=version.metadata
+        )
+
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
+        if "conflict" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e)
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update document: {str(e)}"
+        )
+
+
+@router.post(
+    "/versioning/{document_id}/rollback",
+    response_model=DocumentVersionInfo,
+    summary="Rollback Document Version / ドキュメントバージョンロールバック",
+    description="Rollback a document to a previous version / ドキュメントを以前のバージョンにロールバックします",
+    response_description="New document version created from rollback / ロールバックで作成された新しいバージョン",
+    responses={
+        200: {"description": "Rollback successful / ロールバック成功"},
+        404: {"description": "Document or version not found / ドキュメントまたはバージョンが見つからない"},
+        500: {"description": "Rollback failed / ロールバック失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def rollback_document_version(
+    document_id: str,
+    request: DocumentVersionRollback
+) -> DocumentVersionInfo:
+    """
+    Rollback a document to a previous version / ドキュメントを以前のバージョンにロールバックします
+
+    ## Features / 機能
+
+    - **Safe Rollback**: Creates new version from old content / 古いコンテンツから新しいバージョンを作成
+    - **Preserves History**: Original versions remain intact / 元のバージョンは保持
+    - **Audit Trail**: Tracks rollback operations / ロールバック操作を記録
+
+    ## Example / 例
+
+    ```json
+    {
+      "target_version": 2,
+      "rolled_back_by": "admin@company.com",
+      "change_summary": "Reverting mistaken changes"
+    }
+    ```
+
+    Args:
+        document_id: Document identifier
+        request: Rollback request
+
+    Returns:
+        DocumentVersionInfo for the rollback version
+    """
+    try:
+        service = _get_versioning_service()
+
+        version = service.rollback_to_version(
+            document_id=document_id,
+            target_version=request.target_version,
+            rolled_back_by=request.rolled_back_by,
+            change_summary=request.change_summary
+        )
+
+        return DocumentVersionInfo(
+            version_number=version.version_number,
+            created_at=version.created_at,
+            created_by=version.created_by,
+            change_summary=version.change_summary,
+            content_hash=version.content_hash,
+            file_size_bytes=version.file_size_bytes,
+            content=version.content,
+            metadata_preview=version.metadata
+        )
+
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to rollback document: {str(e)}"
+        )
+
+
+@router.get(
+    "/versioning/{document_id}/history",
+    response_model=VersionHistoryResponse,
+    summary="Get Document Version History / ドキュメントバージョン履歴取得",
+    description="Retrieve complete version history for a document / ドキュメントの完全なバージョン履歴を取得します",
+    response_description="Version history with all versions / すべてのバージョンを含む履歴",
+    responses={
+        200: {"description": "History retrieved successfully / 履歴取得成功"},
+        404: {"description": "Document not found / ドキュメントが見つからない"},
+        500: {"description": "Failed to retrieve history / 履歴取得失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def get_document_version_history(
+    document_id: str,
+    include_content: bool = False
+) -> VersionHistoryResponse:
+    """
+    Get document version history / ドキュメントのバージョン履歴を取得します
+
+    ## Parameters / パラメータ
+
+    - **include_content**: Include full content in response (default: false) / レスポンスに完全なコンテンツを含める（デフォルト: false）
+
+    ## Example / 例
+
+    ```bash
+    # Get history without content
+    curl "http://localhost:8000/documents/versioning/doc-001/history"
+
+    # Get history with full content
+    curl "http://localhost:8000/documents/versioning/doc-001/history?include_content=true"
+    ```
+
+    Args:
+        document_id: Document identifier
+        include_content: Whether to include full content
+
+    Returns:
+        VersionHistoryResponse with all versions
+    """
+    try:
+        service = _get_versioning_service()
+
+        history_data = service.get_version_history(
+            document_id=document_id,
+            include_content=include_content
+        )
+
+        if history_data is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document '{document_id}' not found"
+            )
+
+        versions = [
+            DocumentVersionInfo(**v) for v in history_data['versions']
+        ]
+
+        return VersionHistoryResponse(
+            document_id=history_data['document_id'],
+            current_version=history_data['current_version'],
+            total_versions=history_data['total_versions'],
+            versions=versions
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve history: {str(e)}"
+        )
+
+
+@router.get(
+    "/versioning/{document_id}/versions/{version_number}",
+    response_model=DocumentVersionInfo,
+    summary="Get Specific Document Version / 特定バージョンのドキュメント取得",
+    description="Retrieve a specific version of a document / ドキュメントの特定のバージョンを取得します",
+    response_description="Document version information / ドキュメントバージョン情報",
+    responses={
+        200: {"description": "Version retrieved successfully / バージョン取得成功"},
+        404: {"description": "Document or version not found / ドキュメントまたはバージョンが見つからない"},
+        500: {"description": "Failed to retrieve version / バージョン取得失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def get_document_version(
+    document_id: str,
+    version_number: int
+) -> DocumentVersionInfo:
+    """
+    Get a specific document version / 特定のドキュメントバージョンを取得します
+
+    ## Example / 例
+
+    ```bash
+    # Get version 2 of document
+    curl "http://localhost:8000/documents/versioning/doc-001/versions/2"
+    ```
+
+    Args:
+        document_id: Document identifier
+        version_number: Version number to retrieve
+
+    Returns:
+        DocumentVersionInfo with full content
+    """
+    try:
+        service = _get_versioning_service()
+
+        version = service.get_version(
+            document_id=document_id,
+            version_number=version_number
+        )
+
+        if version is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document '{document_id}' or version {version_number} not found"
+            )
+
+        return DocumentVersionInfo(
+            version_number=version.version_number,
+            created_at=version.created_at,
+            created_by=version.created_by,
+            change_summary=version.change_summary,
+            content_hash=version.content_hash,
+            file_size_bytes=version.file_size_bytes,
+            content=version.content,
+            metadata_preview=version.metadata
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve version: {str(e)}"
+        )
+
+
+@router.get(
+    "/versioning/{document_id}/compare",
+    response_model=VersionComparisonResponse,
+    summary="Compare Document Versions / ドキュメントバージョン比較",
+    description="Compare two versions of a document / ドキュメントの2つのバージョンを比較します",
+    response_description="Comparison results / 比較結果",
+    responses={
+        200: {"description": "Comparison successful / 比較成功"},
+        404: {"description": "Document or versions not found / ドキュメントまたはバージョンが見つからない"},
+        400: {"description": "Invalid version parameters / 不正なバージョンパラメータ"},
+        500: {"description": "Comparison failed / 比較失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def compare_document_versions(
+    document_id: str,
+    version1: int,
+    version2: int
+) -> VersionComparisonResponse:
+    """
+    Compare two document versions / 2つのドキュメントバージョンを比較します
+
+    ## Example / 例
+
+    ```bash
+    # Compare version 1 and 3
+    curl "http://localhost:8000/documents/versioning/doc-001/compare?version1=1&version2=3"
+    ```
+
+    Args:
+        document_id: Document identifier
+        version1: First version number
+        version2: Second version number
+
+    Returns:
+        VersionComparisonResponse with comparison details
+    """
+    try:
+        if version1 < 1 or version2 < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Version numbers must be >= 1"
+            )
+
+        service = _get_versioning_service()
+
+        comparison = service.compare_versions(
+            document_id=document_id,
+            version1=version1,
+            version2=version2
+        )
+
+        if comparison is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document '{document_id}' or specified versions not found"
+            )
+
+        return VersionComparisonResponse(**comparison)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compare versions: {str(e)}"
+        )
+
+
+@router.delete(
+    "/versioning/{document_id}",
+    summary="Delete Versioned Document / バージョン管理ドキュメント削除",
+    description="Delete a document and all its versions / ドキュメントとすべてのバージョンを削除します",
+    response_description="Deletion confirmation / 削除確認",
+    responses={
+        200: {"description": "Document deleted successfully / ドキュメント削除成功"},
+        404: {"description": "Document not found / ドキュメントが見つからない"},
+        500: {"description": "Deletion failed / 削除失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def delete_versioned_document(document_id: str) -> Dict[str, Any]:
+    """
+    Delete a versioned document / バージョン管理ドキュメントを削除します
+
+    ## Warning / 注意
+
+    **This action is irreversible!** All versions of the document will be permanently deleted.
+    **この操作は元に戻せません！** ドキュメントのすべてのバージョンが永久に削除されます。
+
+    ## Example / 例
+
+    ```bash
+    curl -X DELETE "http://localhost:8000/documents/versioning/doc-001"
+    ```
+
+    Args:
+        document_id: Document identifier
+
+    Returns:
+        Deletion confirmation
+    """
+    try:
+        service = _get_versioning_service()
+
+        service.delete_document(document_id=document_id)
+
+        logger.info(f"Deleted versioned document '{document_id}'")
+
+        return {
+            "success": True,
+            "message": f"Document '{document_id}' and all versions deleted successfully"
+        }
+
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete document: {str(e)}"
+        )
+
+
+@router.get(
+    "/versioning",
+    summary="List All Versioned Documents / すべてのバージョン管理ドキュメント一覧",
+    description="List all documents with versioning information / バージョン管理情報付きですべてのドキュメントを一覧表示します",
+    response_description="List of documents with version info / バージョン情報付きのドキュメントリスト",
+    responses={
+        200: {"description": "Documents listed successfully / ドキュメント一覧取得成功"},
+        500: {"description": "Failed to list documents / ドキュメント一覧取得失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def list_versioned_documents() -> Dict[str, Any]:
+    """
+    List all versioned documents / すべてのバージョン管理ドキュメントを一覧表示します
+
+    ## Example / 例
+
+    ```bash
+    curl "http://localhost:8000/documents/versioning"
+    ```
+
+    Returns:
+        List of document summaries
+    """
+    try:
+        service = _get_versioning_service()
+
+        documents = service.list_documents()
+
+        return {
+            "total_documents": len(documents),
+            "documents": documents
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list documents: {str(e)}"
+        )
+
+
+@router.get(
+    "/versioning/stats",
+    response_model=VersioningStatsResponse,
+    summary="Get Versioning Statistics / バージョン管理統計取得",
+    description="Retrieve versioning system statistics / バージョン管理システムの統計を取得します",
+    response_description="Versioning statistics / バージョン管理統計",
+    responses={
+        200: {"description": "Statistics retrieved successfully / 統計取得成功"},
+        500: {"description": "Failed to retrieve statistics / 統計取得失敗"}
+    },
+    tags=["Documents", "Versioning"]
+)
+async def get_versioning_statistics() -> VersioningStatsResponse:
+    """
+    Get versioning system statistics / バージョン管理システムの統計を取得します
+
+    ## Example / 例
+
+    ```bash
+    curl "http://localhost:8000/documents/versioning/stats"
+    ```
+
+    Returns:
+        VersioningStatsResponse with system metrics
+    """
+    try:
+        service = _get_versioning_service()
+
+        stats = service.get_statistics()
+
+        return VersioningStatsResponse(**stats)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve statistics: {str(e)}"
         )

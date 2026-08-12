@@ -25,7 +25,7 @@ router = APIRouter(prefix="/query", tags=["query"])
 
 class QueryRequest(BaseModel):
     """Request model for query endpoint"""
-    query: str = Field(..., description="The question to ask", min_length=1)
+    query: str = Field(..., description="The question to ask", min_length=1, max_length=1000)
     collection: Optional[str] = Field(None, description="Collection/namespace to search in")
     top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")

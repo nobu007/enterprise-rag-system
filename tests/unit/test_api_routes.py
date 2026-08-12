@@ -85,6 +85,22 @@ class TestQueryRequestValidation:
         with pytest.raises(Exception):
             QueryRequest(query="")
 
+    def test_query_request_max_length_validation(self):
+        """Test that overly long query is rejected.
+
+        StreamingQueryRequest caps query at 1000 chars (max_length field +
+        validate_stream_request's ``len(query) > 1000`` check) and both
+        endpoint docstrings promise "1-1000 characters". The non-streaming
+        QueryRequest must enforce the same cap so /query rejects an oversized
+        query at the boundary instead of accepting unbounded text that would
+        blow up embedding cost / the LLM context window.
+        """
+        # Boundary: exactly 1000 chars is valid
+        QueryRequest(query="a" * 1000)
+        # 1001 chars is rejected
+        with pytest.raises(Exception):
+            QueryRequest(query="a" * 1001)
+
     def test_query_request_top_k_bounds(self):
         """Test top_k bounds validation"""
         # Valid range: 1-20

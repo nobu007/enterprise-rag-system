@@ -565,6 +565,81 @@ class TestValidationMiddlewareIsolated:
         assert exc_info.value.status_code == 400
         assert "Invalid Content-Length" in exc_info.value.detail
 
+    @staticmethod
+    def _stream_request(chunks, headers=None):
+        """Build a Request whose receive channel yields ``chunks`` (bytes).
+
+        Mirrors an ASGI body stream carrying NO Content-Length header (the shape
+        produced by Transfer-Encoding: chunked), which is exactly what bypasses
+        _validate_content_length.
+        """
+        state = {"i": 0}
+
+        async def receive():
+            i = state["i"]
+            if i < len(chunks):
+                state["i"] += 1
+                return {
+                    "type": "http.request",
+                    "body": chunks[i],
+                    "more_body": i < len(chunks) - 1,
+                }
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": headers or [],
+            "path": "/",
+            "query_string": b"",
+        }
+        return Request(scope, receive)
+
+    async def test_oversized_body_without_content_length_rejected(self):
+        """An oversized body with NO Content-Length header is rejected with 413.
+
+        Regression: _validate_content_length only inspects the client-controlled
+        Content-Length header, so a request that omits it (Transfer-Encoding:
+        chunked) bypassed the DoS guard and request.body() buffered the full
+        payload into memory with no upper bound. The body read now enforces
+        max_request_size on actual bytes received. Before the fix this returned
+        without raising (bypass confirmed empirically against the live wiring).
+        """
+        mw = self._make_middleware(max_request_size=10)
+        request = self._stream_request([b"x" * 100])
+        with pytest.raises(HTTPException) as exc_info:
+            await mw._validate_request_body(request)
+        assert exc_info.value.status_code == 413
+        assert "too large" in exc_info.value.detail.lower()
+
+    async def test_body_without_content_length_cached_and_readable(self):
+        """An under-limit body with no Content-Length is accepted and re-readable.
+
+        The limited read caches the assembled body on request._body (mirroring
+        Starlette's Request.body()), so downstream handlers that re-read the
+        body still see it — consuming request.stream() alone would otherwise
+        leave them with an empty body.
+        """
+        mw = self._make_middleware(max_request_size=64)
+        payload = b'{"q": "ok"}'
+        request = self._stream_request([payload])
+        await mw._validate_request_body(request)  # must not raise
+        # Downstream re-read via the public API sees the original body.
+        assert await request.body() == payload
+
+    async def test_body_size_limit_aggregated_across_chunks(self):
+        """The size limit is enforced on the TOTAL across stream chunks.
+
+        Each chunk individually is under the limit, but the running total
+        exceeds it, so the request is rejected mid-stream rather than
+        per-chunk — otherwise an attacker could fragment an oversized body.
+        """
+        mw = self._make_middleware(max_request_size=15)
+        request = self._stream_request([b"x" * 10, b"x" * 10])
+        with pytest.raises(HTTPException) as exc_info:
+            await mw._validate_request_body(request)
+        assert exc_info.value.status_code == 413
+
     def test_command_injection_blocked(self):
         """Command-injection payload is rejected with 400 after XSS/SQL/path pass."""
         client = self._build_app()

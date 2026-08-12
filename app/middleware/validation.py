@@ -159,8 +159,12 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             HTTPException: 400 if malicious content detected
         """
         try:
-            # Read body
-            body = await request.body()
+            # Read the body with an actual-byte size limit. The Content-Length
+            # header checked in _validate_content_length is client-controlled
+            # and ABSENT for Transfer-Encoding: chunked requests, so reading the
+            # full body unconditionally (request.body()) would buffer an
+            # unbounded payload into memory and bypass the DoS guard entirely.
+            body = await self._read_body_limited(request)
 
             if not body:
                 return
@@ -198,6 +202,55 @@ class ValidationMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             logger.error(f"Error validating request body: {e}")
             # Don't block on unexpected errors, log and continue
+
+    async def _read_body_limited(self, request: Request) -> bytes:
+        """Read the request body, enforcing max_request_size on actual bytes.
+
+        Starlette's ``Request.body()`` buffers the entire body before returning
+        with no upper bound. A request that omits ``Content-Length`` (e.g.
+        ``Transfer-Encoding: chunked``) slips past ``_validate_content_length``
+        — the size guard only inspects that client-controlled header — so a call
+        to ``request.body()`` would read an attacker-controlled payload fully
+        into memory regardless of the configured limit, defeating the DoS
+        protection this middleware exists to provide. Read incrementally via
+        the request stream instead and abort with 413 the instant the
+        accumulated size exceeds the limit.
+
+        The assembled bytes are cached on ``request._body`` (mirroring what
+        Starlette's own ``body()`` does) so downstream handlers and
+        ``BaseHTTPMiddleware``'s ``_CachedRequest`` can re-read the body:
+        consuming ``request.stream()`` without setting ``_body`` leaves the
+        downstream app with an empty body.
+        """
+        if hasattr(request, "_body"):
+            # Already buffered (e.g. by an earlier reader): still enforce the limit.
+            body = request._body
+            if len(body) > self.max_request_size:
+                logger.warning(
+                    f"Request size limit exceeded: {len(body)} bytes (no Content-Length)"
+                )
+                raise HTTPException(
+                    413,
+                    detail=f"Request entity too large (max {self.max_request_size} bytes)",
+                )
+            return body
+
+        chunks = []
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > self.max_request_size:
+                logger.warning(
+                    f"Request size limit exceeded: {total} bytes (no Content-Length)"
+                )
+                raise HTTPException(
+                    413,
+                    detail=f"Request entity too large (max {self.max_request_size} bytes)",
+                )
+            chunks.append(chunk)
+        body = b"".join(chunks)
+        request._body = body
+        return body
 
     async def _validate_request_data(self, data: Any, request: Request):
         """

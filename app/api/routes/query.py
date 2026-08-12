@@ -26,7 +26,7 @@ router = APIRouter(prefix="/query", tags=["query"])
 class QueryRequest(BaseModel):
     """Request model for query endpoint"""
     query: str = Field(..., description="The question to ask", min_length=1, max_length=1000)
-    collection: Optional[str] = Field(None, description="Collection/namespace to search in")
+    collection: Optional[str] = Field(None, description="Collection/namespace to search in", max_length=1000)
     top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
@@ -46,7 +46,7 @@ class QueryResponse(BaseModel):
 class StreamingQueryRequest(BaseModel):
     """Request model for streaming query endpoint"""
     query: str = Field(..., description="The question to ask", min_length=1, max_length=1000)
-    collection: Optional[str] = Field(None, description="Collection/namespace to search in")
+    collection: Optional[str] = Field(None, description="Collection/namespace to search in", max_length=1000)
     top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
@@ -61,7 +61,10 @@ class BatchQueryRequest(BaseModel):
     # accepted at the boundary and fed into pipeline.query -> unbounded
     # embedding cost / LLM context blowup (sibling of the single-query cap).
     queries: List[Annotated[str, Field(max_length=1000)]] = Field(..., description="List of questions to ask")
-    collection: Optional[str] = None
+    # Length cap mirrors QueryRequest.collection / StreamingQueryRequest.collection
+    # (max_length=1000); an oversized collection name reaches Prometheus labels
+    # (raw value) and log lines, bloating metric label values / log output.
+    collection: Optional[str] = Field(None, max_length=1000)
     top_k: int = Field(5, ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     rerank: bool = Field(True, description="Apply cross-encoder re-ranking")

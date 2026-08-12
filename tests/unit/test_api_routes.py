@@ -127,6 +127,25 @@ class TestQueryRequestValidation:
         assert request.use_hybrid is False
         assert request.filters == {"category": "tech"}
 
+    def test_query_request_collection_max_length(self):
+        """Collection name is capped at 1000 chars (sibling of query max_length).
+
+        ``collection`` is the other client-controlled body string carried by
+        all three request models. It reaches Prometheus labels
+        (``cache_hits.labels(collection=...)`` etc.) as a raw value and is
+        interpolated into retrieval log lines, so without a cap an oversized
+        name bloats metric label values / log output. Mirrors the query cap
+        (1000) established across QueryRequest / StreamingQueryRequest.
+        """
+        # Boundary: exactly 1000 chars is valid
+        req = QueryRequest(query="q", collection="c" * 1000)
+        assert req.collection == "c" * 1000
+        # None still accepted (Optional)
+        QueryRequest(query="q", collection=None)
+        # 1001 chars is rejected
+        with pytest.raises(Exception):
+            QueryRequest(query="q", collection="c" * 1001)
+
 
 class TestQueryEndpoint:
     """Test POST /query/ endpoint"""
@@ -202,6 +221,18 @@ class TestQueryEndpoint:
         data = response.json()
         assert "detail" in data
         assert "Query failed" in data["detail"]
+
+    def test_query_endpoint_collection_too_long_rejected(self, client):
+        """An oversized collection name is rejected at the /query boundary (422).
+
+        Mirrors the query max_length cap; collection reaches Prometheus labels
+        and logs as a raw value, so cap it at the boundary.
+        """
+        response = client.post(
+            "/query/",
+            json={"query": "q", "collection": "c" * 1001}
+        )
+        assert response.status_code == 422
 
 
 class TestBatchQueryEndpoint:
@@ -323,6 +354,14 @@ class TestBatchQueryEndpoint:
 
         assert response.status_code == 200
 
+    def test_batch_query_collection_too_long_rejected(self, client):
+        """An oversized collection name is rejected at the /query/batch boundary (422)."""
+        response = client.post(
+            "/query/batch",
+            json={"queries": ["q"], "collection": "c" * 1001}
+        )
+        assert response.status_code == 422
+
 
 class TestHealthEndpoint:
     """Test GET /query/health endpoint"""
@@ -391,3 +430,30 @@ class TestResponseModels:
         # Single oversized item rejected
         with pytest.raises(ValidationError):
             BatchQueryRequest(queries=["a" * 1001])
+
+    def test_batch_query_request_collection_max_length(self):
+        """Collection capped at 1000 on BatchQueryRequest (sibling of per-item query cap)."""
+        from app.api.routes.query import BatchQueryRequest
+        from pydantic import ValidationError
+
+        # Boundary accepted
+        req = BatchQueryRequest(queries=["q"], collection="c" * 1000)
+        assert req.collection == "c" * 1000
+        # None accepted (Optional)
+        BatchQueryRequest(queries=["q"], collection=None)
+        # Oversized rejected
+        with pytest.raises(ValidationError):
+            BatchQueryRequest(queries=["q"], collection="c" * 1001)
+
+    def test_streaming_query_request_collection_max_length(self):
+        """Collection capped at 1000 on StreamingQueryRequest (sibling of query cap)."""
+        from app.api.routes.query import StreamingQueryRequest
+        from pydantic import ValidationError
+
+        # Boundary accepted
+        StreamingQueryRequest(query="q", collection="c" * 1000)
+        # None accepted (Optional)
+        StreamingQueryRequest(query="q", collection=None)
+        # Oversized rejected
+        with pytest.raises(ValidationError):
+            StreamingQueryRequest(query="q", collection="c" * 1001)

@@ -251,6 +251,26 @@ Answer:"""
             retrieval_latency = int((time.time() - retrieval_start) * 1000)
             logger.info(f"Retrieval completed in {retrieval_latency}ms")
 
+            # Empty-results guard: mirror BOTH sibling retrieval paths --
+            # ``RAGPipeline.query`` (rag_pipeline.py:290) and
+            # ``StreamingRAGPipeline.stream_query`` (rag_pipeline.py:395) --
+            # which short-circuit to "I couldn't find any relevant
+            # information" when retrieval returns nothing. Without this guard
+            # the stream fell through to ``stream_query_response`` with an
+            # EMPTY context, prompting the LLM with no documents and streaming
+            # a context-free hallucination instead of the honest no-results
+            # message every sibling returns. An empty retrieval is reachable
+            # in production: a query matching no document, or whose
+            # ``filter_dict`` removes every candidate.
+            if not retrieval_results:
+                logger.info("No documents retrieved; returning no-results message")
+                yield StreamingChunk(
+                    content="I couldn't find any relevant information to answer your question.",
+                    is_done=True,
+                    sources=[]
+                )
+                return
+
             # Step 2: Build context from retrieved documents
             context_parts = []
             sources = []

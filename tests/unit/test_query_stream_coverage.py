@@ -251,6 +251,46 @@ class TestStreamRetrieveOverfetchContract:
         )
 
 
+class TestStreamEmptyRetrievalGuard:
+    """Regression guard: empty retrieval must short-circuit to the no-results
+    message, mirroring BOTH sibling paths -- ``RAGPipeline.query``
+    (rag_pipeline.py:290) and ``StreamingRAGPipeline.stream_query``
+    (rag_pipeline.py:395) -- which return "I couldn't find any relevant
+    information" when retrieval is empty.
+
+    Without this guard, ``stream_query_with_retrieval`` (the exact method the
+    live /query/stream route drives) fell through to ``stream_query_response``
+    with an EMPTY context: the LLM was prompted with no documents and streamed
+    a context-free hallucination instead of the honest no-results message every
+    sibling path returns. An empty retrieval is reachable in production -- a
+    query whose embeddings match no document, or whose ``filter_dict`` removes
+    every candidate.
+    """
+
+    def test_empty_retrieval_returns_no_results_message(self, app_with_overrides):
+        app, pipeline, llm = app_with_overrides
+        # Retrieval finds nothing.
+        pipeline.retriever.retrieve = Mock(return_value=[])
+
+        client = TestClient(app)
+        resp = client.post("/query/stream", json={"query": "obscure query"})
+
+        assert resp.status_code == 200
+        chunks = _parse_sse(resp.text)
+        assert chunks, "expected the no-results chunk"
+        joined = "".join(c.get("content", "") for c in chunks)
+        assert "couldn't find" in joined.lower(), (
+            "empty retrieval must short-circuit to the no-results message "
+            "(matching RAGPipeline.query + StreamingRAGPipeline.stream_query), "
+            f"not stream an LLM answer on empty context; got: {joined!r}"
+        )
+        # The LLM must NOT be invoked when there are no documents to ground on.
+        assert not llm.chat.completions.create.called, (
+            "LLM must not be called on empty retrieval"
+        )
+        assert any(c.get("is_done") for c in chunks), "final chunk must signal done"
+
+
 class TestStreamQueryErrorHandlers:
     """Cover L479-488 (ValueError->400, generic->500) and L462-466 (in-stream)."""
 

@@ -152,6 +152,21 @@ Answer:"""
                 stream_options={"include_usage": True}
             )
 
+            # ``stream_options={"include_usage": True}`` asks the provider to
+            # emit a trailing usage-only chunk, but it is an OpenAI-specific
+            # extension: many OpenAI-compatible servers (Ollama, llama.cpp,
+            # older vLLM/LiteLLM) ignore unknown stream_options and never send
+            # that final chunk. Without the guard below, the ``async for`` loop
+            # simply exhausted and NO ``is_done=True`` chunk was ever yielded --
+            # the client received the content deltas but never the completion
+            # chunk that carries ``sources`` and the latency/token metadata, a
+            # source-less incomplete response on the live /api/v1/query/stream
+            # endpoint. A provider that DOES send usage still ``break``s inside
+            # the loop, so the post-loop fallback never runs (byte-identical
+            # happy path); only the no-usage case changes (incomplete ->
+            # complete).
+            final_emitted = False
+
             async for chunk in stream:
                 try:
                     # Check for timeout
@@ -191,11 +206,33 @@ Answer:"""
                                 **(metadata or {})
                             }
                         )
+                        final_emitted = True
                         break
 
                 except Exception as e:
                     logger.error(f"Error processing stream chunk: {e}")
                     raise StreamingResponseError(f"Chunk processing error: {e}")
+
+            # Clean stream end with no trailing usage chunk (a compatible
+            # provider that ignored ``include_usage``): emit the completion
+            # chunk here so the client still receives sources + metadata.
+            # See the ``final_emitted`` rationale above.
+            if not final_emitted:
+                latency_ms = int((time.time() - start_time) * 1000)
+                logger.info(
+                    f"Streaming completed (no usage chunk from provider): "
+                    f"{total_tokens} tokens, {latency_ms}ms"
+                )
+                yield StreamingChunk(
+                    content="",
+                    is_done=True,
+                    sources=sources,
+                    metadata={
+                        "total_tokens": total_tokens,
+                        "latency_ms": latency_ms,
+                        **(metadata or {})
+                    }
+                )
 
         except Exception as e:
             logger.error(f"Streaming failed: {e}", exc_info=True)

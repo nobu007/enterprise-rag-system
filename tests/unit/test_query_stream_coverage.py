@@ -44,6 +44,29 @@ def _llm_stream():
     return _gen()
 
 
+def _llm_stream_no_usage():
+    """Fresh async generator mimicking an OpenAI-*compatible* provider that
+    ignores ``stream_options={"include_usage": True}`` (Ollama, llama.cpp,
+    older vLLM/LiteLLM): content deltas are streamed, but NO trailing
+    usage-only chunk is ever emitted -- the stream simply ends.
+
+    The default ``_llm_stream`` always sends ``choices=[], usage=Mock(...)``
+    as its final chunk, which masked the no-usage branch in
+    ``StreamingRAGService.stream_query_response`` (the completion chunk was
+    tied to that usage chunk arriving). This generator exercises the path
+    a real compatible provider takes.
+    """
+    async def _gen():
+        yield Mock(choices=[Mock(delta=Mock(content="RAG stands"))], usage=None)
+        yield Mock(choices=[Mock(delta=Mock(content=" for retrieval"))], usage=None)
+        # Deliberately NO trailing ``choices=[], usage=Mock(...)`` chunk.
+        # ``usage=None`` is set explicitly so the auto-Mock does not create a
+        # truthy ``.usage`` on each content chunk (which would falsely trip
+        # the ``if chunk.usage:`` completion branch) -- faithful to a real
+        # provider, which omits ``usage`` entirely from content deltas.
+    return _gen()
+
+
 def _make_pipeline(retrieve_side_effect=None):
     p = Mock()
     p.retriever = Mock()
@@ -294,6 +317,47 @@ class TestStreamEmptyRetrievalGuard:
             "LLM must not be called on empty retrieval"
         )
         assert any(c.get("is_done") for c in chunks), "final chunk must signal done"
+
+
+class TestStreamNoUsageChunkFallback:
+    """Regression guard for a compatible provider that ignores
+    ``stream_options={"include_usage": True}``.
+
+    Ollama / llama.cpp / older vLLM/LiteLLM stream content deltas but never
+    emit the trailing usage-only chunk. ``StreamingRAGService.stream_query_response``
+    previously tied the ``is_done=True`` completion chunk (which carries
+    ``sources`` + latency/token metadata) to that usage chunk arriving, so on
+    such a provider the ``async for`` loop ended normally and the completion
+    chunk was NEVER yielded -- the client got content but no sources and no
+    done marker. The ``final_emitted`` fallback emits it on clean loop end;
+    this test drives that path through the live /query/stream route.
+    """
+
+    def test_no_usage_chunk_still_emits_done_and_sources(self, app_with_overrides):
+        app, pipeline, llm = app_with_overrides
+        # Replace the default usage-bearing stream with a no-usage stream.
+        llm.chat.completions.create = AsyncMock(
+            side_effect=lambda *a, **k: _llm_stream_no_usage()
+        )
+
+        client = TestClient(app)
+        resp = client.post("/query/stream", json={"query": "What is RAG?"})
+
+        assert resp.status_code == 200
+        chunks = _parse_sse(resp.text)
+        assert chunks, "expected content chunks"
+        joined = "".join(c.get("content", "") for c in chunks)
+        assert "RAG stands" in joined and "retrieval" in joined
+
+        # The completion chunk must still be emitted (the bug dropped it).
+        done = [c for c in chunks if c.get("is_done")]
+        assert done, "no-usage stream must still emit an is_done completion chunk"
+        assert not any("error" in c for c in chunks), chunks
+
+        # Sources ride on the completion chunk, so they must reach the client
+        # even when the provider sends no usage chunk.
+        final = done[-1]
+        assert final.get("sources"), "completion chunk must carry sources"
 
 
 class TestStreamTemperatureConfigContract:

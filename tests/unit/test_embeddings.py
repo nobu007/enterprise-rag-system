@@ -38,6 +38,20 @@ def mock_single_response():
     return response
 
 
+@pytest.fixture
+def mock_empty_response():
+    """Mock OpenAI embeddings response with an empty data list.
+
+    The SDK types ``CreateEmbeddingResponse.data`` as ``List[Embedding]``
+    (required=True, but a List may be empty). A degenerate OpenAI-compatible
+    provider can return a 200 with ``data: []`` -- this exercises the
+    embed_query/aembed_query empty-data branch.
+    """
+    response = Mock()
+    response.data = []
+    return response
+
+
 # ---------------------------------------------------------------------------
 # OpenAIEmbeddings Tests
 # ---------------------------------------------------------------------------
@@ -119,6 +133,31 @@ class TestOpenAIEmbeddings:
 
         with pytest.raises(RuntimeError, match="Failed to generate embeddings"):
             await model.aembed_texts(["test"])
+
+    def test_embed_query_empty_data_raises_runtime_error(self, mock_empty_response):
+        """Empty ``data`` (degenerate provider) must raise RuntimeError, not IndexError.
+
+        ``embed_query`` indexes ``embed_texts([text])[0]``; an empty ``data``
+        list used to leak a raw IndexError -> 500 on /query. The module's
+        contract is that every embedding failure raises RuntimeError (mirrored
+        by CohereEmbeddings.embed_query and embed_texts' API-error wrapping).
+        """
+        model = OpenAIEmbeddings(api_key="test-key")
+        model._sync_client = Mock()
+        model._sync_client.embeddings.create.return_value = mock_empty_response
+
+        with pytest.raises(RuntimeError, match="Failed to generate embedding"):
+            model.embed_query("test")
+
+    @pytest.mark.asyncio
+    async def test_aembed_query_empty_data_raises_runtime_error(self, mock_empty_response):
+        """Async empty ``data`` must raise RuntimeError, not IndexError (sibling of sync)."""
+        model = OpenAIEmbeddings(api_key="test-key")
+        model._async_client = Mock()
+        model._async_client.embeddings.create = AsyncMock(return_value=mock_empty_response)
+
+        with pytest.raises(RuntimeError, match="Failed to generate embedding"):
+            await model.aembed_query("test")
 
     def test_no_global_api_key_mutation(self):
         """Test that creating OpenAIEmbeddings does not mutate global openai.api_key."""

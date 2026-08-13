@@ -84,7 +84,24 @@ class OpenAIEmbeddings(EmbeddingModel):
 
     def embed_query(self, text: str) -> List[float]:
         """Generate embedding for a single query (sync)"""
-        return self.embed_texts([text])[0]
+        # ``embed_texts`` returns ``[]`` when the embedding API succeeds
+        # (HTTP 200) but returns an empty ``data`` list -- the SDK types
+        # ``CreateEmbeddingResponse.data`` as ``List[Embedding]``
+        # (required=True, but a List may be empty), and a degenerate
+        # OpenAI-compatible provider can return ``data: []``. Indexing the
+        # result ``[0]`` raised a raw IndexError that propagated uncaught
+        # through ``HybridRetriever.semantic_search`` -> ``RAGPipeline.query``
+        # -> a 500 on /query, violating this module's contract that *every*
+        # embedding failure raises RuntimeError: the sibling
+        # ``CohereEmbeddings.embed_query`` places its ``[0]`` inside a try
+        # (so its empty-data IndexError is already normalised to
+        # RuntimeError), and ``embed_texts`` itself wraps all API failures
+        # as RuntimeError. A non-empty response is byte-identical; only the
+        # empty case changes (raw IndexError -> documented RuntimeError).
+        embeddings = self.embed_texts([text])
+        if not embeddings:
+            raise RuntimeError("Failed to generate embedding: API returned no data")
+        return embeddings[0]
 
     async def aembed_texts(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for multiple texts (async, non-blocking)"""
@@ -100,7 +117,11 @@ class OpenAIEmbeddings(EmbeddingModel):
 
     async def aembed_query(self, text: str) -> List[float]:
         """Generate embedding for a single query (async, non-blocking)"""
+        # See ``embed_query``: an empty ``data`` list must surface as the
+        # documented RuntimeError rather than a raw IndexError from ``[0]``.
         embeddings = await self.aembed_texts([text])
+        if not embeddings:
+            raise RuntimeError("Failed to generate embedding: API returned no data")
         return embeddings[0]
 
     @property

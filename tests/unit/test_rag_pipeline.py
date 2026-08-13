@@ -210,6 +210,58 @@ async def test_rag_pipeline_query_handles_null_llm_usage(
     assert len(response.sources) == 2
 
 
+@pytest.fixture
+def mock_chat_completion_empty_choices():
+    """Mock chat completion whose ``choices`` list is empty.
+
+    The OpenAI SDK types ``ChatCompletion.choices`` as ``List[Choice]``
+    (required, but a List may be empty). The streaming path already guards
+    ``if chunk.choices:`` (streaming.py); a degenerate non-streaming
+    completion from an OpenAI-compatible provider can likewise return
+    ``choices: []``. The HTTP call succeeded and retrieval already ran, so
+    the pipeline must tolerate this instead of crashing on ``choices[0]``.
+    """
+    mock_response = Mock()
+    mock_response.choices = []  # provider returned no choices
+    mock_response.usage.total_tokens = 100
+    mock_response.usage.prompt_tokens = 80
+    mock_response.usage.completion_tokens = 0
+    return mock_response
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_query_handles_empty_choices(
+    mock_openai_client, mock_retriever, sample_retrieval_results,
+    mock_chat_completion_empty_choices
+):
+    """A degenerate non-streaming completion may return ``choices: []`` (the
+    SDK types choices as a List, which may be empty). Previously _call_llm ran
+    ``response.choices[0]`` unconditionally -> IndexError -> RuntimeError ->
+    500 on /query (and tripped the LLM circuit breaker, whose
+    expected_exception is RuntimeError) even though retrieval + the HTTP call
+    succeeded. The pipeline must degrade to an empty answer, mirroring the
+    null-content guard."""
+    mock_retriever.retrieve.return_value = sample_retrieval_results
+    mock_openai_client.chat.completions.create = AsyncMock(
+        return_value=mock_chat_completion_empty_choices
+    )
+
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4'
+    )
+
+    response = await pipeline.query("A question to a degenerate provider.")
+
+    assert isinstance(response, RAGResponse)
+    # No choices -> empty answer rather than crashing the request.
+    assert response.answer == ""
+    # answer="" -> len() term 0, same confidence path as null content.
+    assert response.confidence == round(0.5 * 0.85 + 0.3 * 1.0 + 0.2 * 0.0, 2)
+    assert len(response.sources) == 2
+
+
 @pytest.mark.asyncio
 async def test_rag_pipeline_no_results(mock_openai_client, mock_retriever):
     """Test RAG pipeline with no retrieval results"""

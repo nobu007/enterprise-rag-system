@@ -138,6 +138,30 @@ Answer:"""
                         type='output'
                     ).inc(response.usage.completion_tokens)
 
+                # The SDK types ``ChatCompletion.choices`` as ``List[Choice]``
+                # (required, but a List may be empty). The streaming path guards
+                # ``if chunk.choices:`` (streaming.py) -- with ``include_usage``
+                # a final streaming chunk carries an empty choices list, and a
+                # degenerate non-streaming completion from an OpenAI-compatible
+                # provider can likewise return ``choices: []``. Indexing
+                # ``choices[0]`` here raised IndexError -> RuntimeError -> 500
+                # (tripping the LLM circuit breaker, whose expected_exception is
+                # RuntimeError) even though retrieval + the HTTP call succeeded.
+                # Degrade to an empty answer, mirroring the null-content guard
+                # below: a non-empty choices response is byte-identical; only
+                # the empty case changes (crash -> graceful empty answer).
+                if not response.choices:
+                    logger.warning(
+                        "LLM response contained no choices; returning empty answer"
+                    )
+                    tokens_used = (
+                        response.usage.total_tokens if response.usage else 0
+                    )
+                    return {
+                        'answer': '',
+                        'tokens_used': tokens_used,
+                        'finish_reason': None,
+                    }
                 content = response.choices[0].message.content
                 # The SDK types ``message.content`` as Optional[str]: a
                 # ``content_filter`` or refusal response returns None. Downstream

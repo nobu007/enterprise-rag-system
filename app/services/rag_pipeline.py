@@ -138,8 +138,19 @@ Answer:"""
                         type='output'
                     ).inc(response.usage.completion_tokens)
 
+                content = response.choices[0].message.content
+                # The SDK types ``message.content`` as Optional[str]: a
+                # ``content_filter`` or refusal response returns None. Downstream
+                # ``_calculate_confidence`` calls ``len(answer)`` and the
+                # RAGResponse.answer field is str, so a None propagated from here
+                # raised TypeError -> 500 even though retrieval succeeded.
+                # Normalize at this boundary (where untrusted LLM output enters
+                # the pipeline): a string answer is byte-identical; only the
+                # None case changes (crash -> empty answer).
+                if content is None:
+                    content = ""
                 return {
-                    'answer': response.choices[0].message.content,
+                    'answer': content,
                     'tokens_used': response.usage.total_tokens,
                     'finish_reason': response.choices[0].finish_reason
                 }

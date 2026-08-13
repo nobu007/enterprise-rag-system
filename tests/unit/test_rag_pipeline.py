@@ -108,6 +108,55 @@ async def test_rag_pipeline_query(mock_openai_client, mock_retriever, sample_ret
     assert response.tokens_used == mock_chat_completion.usage.total_tokens
 
 
+@pytest.fixture
+def mock_chat_completion_null_content():
+    """Mock chat completion whose ``message.content`` is None.
+
+    The OpenAI SDK types ``message.content`` as Optional[str]: a
+    ``content_filter`` or refusal response yields content=None. The pipeline
+    must tolerate this (retrieval succeeded) instead of crashing.
+    """
+    mock_response = Mock()
+    mock_response.choices = [Mock()]
+    mock_response.choices[0].message.content = None  # None, not a string
+    mock_response.choices[0].finish_reason = 'content_filter'
+    mock_response.usage.total_tokens = 100
+    mock_response.usage.prompt_tokens = 80
+    mock_response.usage.completion_tokens = 0
+    return mock_response
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_query_handles_null_llm_content(
+    mock_openai_client, mock_retriever, sample_retrieval_results,
+    mock_chat_completion_null_content
+):
+    """A content_filter / refusal response returns message.content=None (the
+    SDK contract is Optional[str]). Previously _calculate_confidence ran
+    ``len(answer)`` -> TypeError -> 500 even though retrieval succeeded; the
+    pipeline must degrade to an empty answer."""
+    mock_retriever.retrieve.return_value = sample_retrieval_results
+    mock_openai_client.chat.completions.create = AsyncMock(
+        return_value=mock_chat_completion_null_content
+    )
+
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4'
+    )
+
+    response = await pipeline.query("A question the model filtered.")
+
+    assert isinstance(response, RAGResponse)
+    # None normalized to "" rather than crashing the request.
+    assert response.answer == ""
+    # Retrieval still surfaced; confidence is len("")=0 -> length term 0,
+    # rest unchanged: 0.5*0.85 + 0.3*(2/2) + 0.2*0.0, rounded as in query().
+    assert response.confidence == round(0.5 * 0.85 + 0.3 * 1.0 + 0.2 * 0.0, 2)
+    assert len(response.sources) == 2
+
+
 @pytest.mark.asyncio
 async def test_rag_pipeline_no_results(mock_openai_client, mock_retriever):
     """Test RAG pipeline with no retrieval results"""

@@ -96,6 +96,25 @@ class OpenAIEmbeddings(EmbeddingModel):
                     f"provider returned {len(embeddings)} embeddings for "
                     f"{len(texts)} inputs"
                 )
+            # Element-level sibling of the count guard above. The SDK types
+            # ``Embedding.embedding`` as ``List[float]`` (required=True, but a
+            # List may be empty -- ``Embedding(embedding=[], ...)`` parses
+            # cleanly). A degenerate OpenAI-compatible provider can return a
+            # 200 with the right COUNT of items but each ``embedding`` empty
+            # (``data: [{"embedding": [], ...}]``). The count guard above
+            # passes (right number of elements), so without this check an
+            # empty vector reaches the caller: ``embed_query`` returns ``[]``
+            # -> ``FAISSVectorDB.search`` builds a 0-dim query vector ->
+            # ``faiss.IndexFlatIP.search`` raises ``AssertionError`` -> 500 on
+            # /query (retrieval runs outside the LLM circuit breaker, so it is
+            # not gracefully degraded), and the ingest path builds
+            # ``np.array([[]])`` -> ``index.add`` AssertionError -> 500 on
+            # /documents/ingest. Fail fast at this boundary with the same
+            # RuntimeError contract as every other embedding failure. A
+            # non-empty vector response is byte-identical; only the empty case
+            # changes (crash -> documented error).
+            if any(len(e) == 0 for e in embeddings):
+                raise ValueError("provider returned an empty embedding vector")
             return embeddings
         except Exception as e:
             logger.error(f"Sync embedding generation failed: {e}")
@@ -139,6 +158,12 @@ class OpenAIEmbeddings(EmbeddingModel):
                     f"provider returned {len(embeddings)} embeddings for "
                     f"{len(texts)} inputs"
                 )
+            # See ``embed_texts``: a degenerate provider returning the right
+            # COUNT of embeddings but each an empty vector (``[]``) must
+            # surface as RuntimeError here, not leak an empty vector into the
+            # FAISS search/add path (0-dim query -> AssertionError -> 500).
+            if any(len(e) == 0 for e in embeddings):
+                raise ValueError("provider returned an empty embedding vector")
             return embeddings
         except Exception as e:
             logger.error(f"Async embedding generation failed: {e}")

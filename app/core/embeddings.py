@@ -77,7 +77,26 @@ class OpenAIEmbeddings(EmbeddingModel):
                 model=self.model,
                 input=texts,
             )
-            return [item.embedding for item in response.data]
+            embeddings = [item.embedding for item in response.data]
+            # Degenerate-provider guard (sibling of embed_query's empty-data
+            # guard): an OpenAI-compatible provider can return a 200 with an
+            # empty or short ``data`` list even for non-empty input. The
+            # single path (embed_query/aembed_query) already raises
+            # RuntimeError on empty data; without this guard the batch path
+            # returns a short list, and the live ingest path upserts fewer
+            # vectors than ids -> ``np.array([])`` -> ``index.add`` raises
+            # ``ValueError: not enough values to unpack (expected 2, got 1)``
+            # -> 500 on /documents/ingest (and a failed Celery batch task).
+            # Raise here so ingestion fails fast with the documented
+            # RuntimeError, mirroring embed_query and the API-failure path
+            # below. Empty input (texts=[]) legitimately yields [] (0 == 0),
+            # so that contract is unchanged.
+            if len(embeddings) != len(texts):
+                raise ValueError(
+                    f"provider returned {len(embeddings)} embeddings for "
+                    f"{len(texts)} inputs"
+                )
+            return embeddings
         except Exception as e:
             logger.error(f"Sync embedding generation failed: {e}")
             raise RuntimeError(f"Failed to generate embeddings: {e}")
@@ -110,7 +129,17 @@ class OpenAIEmbeddings(EmbeddingModel):
                 model=self.model,
                 input=texts,
             )
-            return [item.embedding for item in response.data]
+            embeddings = [item.embedding for item in response.data]
+            # See ``embed_texts``: a degenerate provider returning fewer
+            # embeddings than inputs must surface as RuntimeError at this
+            # boundary rather than a short list that misaligns ids/vectors in
+            # the ingest upsert path (FAISS index.add ValueError -> 500).
+            if len(embeddings) != len(texts):
+                raise ValueError(
+                    f"provider returned {len(embeddings)} embeddings for "
+                    f"{len(texts)} inputs"
+                )
+            return embeddings
         except Exception as e:
             logger.error(f"Async embedding generation failed: {e}")
             raise RuntimeError(f"Failed to generate embeddings: {e}")

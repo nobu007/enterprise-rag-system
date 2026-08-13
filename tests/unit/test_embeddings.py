@@ -159,6 +159,32 @@ class TestOpenAIEmbeddings:
         with pytest.raises(RuntimeError, match="Failed to generate embedding"):
             await model.aembed_query("test")
 
+    def test_embed_texts_empty_data_raises_runtime_error(self, mock_empty_response):
+        """Empty ``data`` for batch input (degenerate provider) must raise RuntimeError, not return [].
+
+        ``embed_texts`` feeds the live /documents/ingest (and Celery batch)
+        path: returning a short list for non-empty input upserts fewer vectors
+        than ids -> ``np.array([])`` -> FAISS ``index.add`` raises
+        ``ValueError: not enough values to unpack`` -> 500 on ingest. This is
+        the batch sibling of ``embed_query``'s empty-data guard.
+        """
+        model = OpenAIEmbeddings(api_key="test-key")
+        model._sync_client = Mock()
+        model._sync_client.embeddings.create.return_value = mock_empty_response
+
+        with pytest.raises(RuntimeError, match="Failed to generate embeddings"):
+            model.embed_texts(["a", "b"])
+
+    @pytest.mark.asyncio
+    async def test_aembed_texts_empty_data_raises_runtime_error(self, mock_empty_response):
+        """Async empty ``data`` for batch input must raise RuntimeError (sibling of sync)."""
+        model = OpenAIEmbeddings(api_key="test-key")
+        model._async_client = Mock()
+        model._async_client.embeddings.create = AsyncMock(return_value=mock_empty_response)
+
+        with pytest.raises(RuntimeError, match="Failed to generate embeddings"):
+            await model.aembed_texts(["a", "b"])
+
     def test_no_global_api_key_mutation(self):
         """Test that creating OpenAIEmbeddings does not mutate global openai.api_key."""
         import openai

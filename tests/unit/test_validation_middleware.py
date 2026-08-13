@@ -711,6 +711,72 @@ class TestValidationMiddlewareIsolated:
         assert response.status_code == 400
         assert detail_fragment in response.json()["detail"]
 
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # Key carries BOTH a detector trigger AND a CRLF log-forging tail.
+            ({"<script>alert(1)</script>\r\nFAKE LOG LINE": "benign"}),
+            ({"1 UNION SELECT password FROM users\r\nFAKE LOG LINE": "benign"}),
+            ({"../../../etc/passwd\r\nFAKE LOG LINE": "benign"}),
+            ({"data `whoami`\r\nFAKE LOG LINE": "benign"}),
+        ],
+    )
+    def test_malicious_key_crlf_neutralized_in_detection_log(self, body, caplog):
+        """A CRLF in a malicious JSON key must not forge extra log lines (CWE-117).
+
+        Regression: ``_validate_string_value`` logs the JSON ``path``, which is
+        built from client-controlled object keys (``_validate_dict_recursive``:
+        ``current_path = f"{path}.{key}"``). Live endpoints accept arbitrary-keyed
+        dicts (``QueryRequest.filters: Dict[str, Any]``), so a key that BOTH
+        trips a detector AND carries CR/LF reached ``logger.warning`` raw, and the
+        embedded newline split the warning across lines -- the tail impersonating
+        a real log entry (log forging / CWE-117). This is the same class as the
+        body/header sites already neutralised in rag_pipeline + streaming, but the
+        validation middleware's own detection logs were missed by that sweep. Only
+        the log representation is neutralised; the 400 rejection and its detail are
+        unchanged (strictly-safer).
+        """
+        client = self._build_app()
+        with caplog.at_level(logging.WARNING):
+            response = client.post("/", json=body)
+        assert response.status_code == 400
+        detection_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and ("malicious content" in r.getMessage()
+                 or "injection pattern detected" in r.getMessage()
+                 or "Path traversal pattern detected" in r.getMessage())
+        ]
+        assert detection_records, "expected a detection warning record"
+        for record in detection_records:
+            message = record.getMessage()
+            assert "\n" not in message, f"raw newline leaked into log: {message!r}"
+            assert "\r" not in message, f"raw carriage return leaked into log: {message!r}"
+
+    def test_value_detection_crlf_ancestor_key_neutralized_in_log(self, caplog):
+        """CRLF in an *ancestor* key must not forge log lines when a child value trips.
+
+        ``path`` is assembled from every enclosing key, so even when the detected
+        VALUE is what trips the detector, a CRLF in any ancestor key flows into the
+        same ``logger.warning`` call via the assembled path. The neutralisation
+        must therefore cover the whole path, not just the detected string.
+        """
+        client = self._build_app()
+        # Ancestor key carries the CRLF; the leaf VALUE carries the XSS trigger.
+        body = {"filters": {"legit\r\nFAKE LOG LINE": "<script>alert(1)</script>"}}
+        with caplog.at_level(logging.WARNING):
+            response = client.post("/", json=body)
+        assert response.status_code == 400
+        detection_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING and "malicious content" in r.getMessage()
+        ]
+        assert detection_records, "expected an XSS detection warning record"
+        for record in detection_records:
+            message = record.getMessage()
+            assert "\n" not in message, f"raw newline leaked into log: {message!r}"
+            assert "\r" not in message, f"raw carriage return leaked into log: {message!r}"
+
     def test_benign_dict_keys_not_over_blocked(self):
         """Legitimate filter-style keys (identifiers) are unaffected by key validation.
 

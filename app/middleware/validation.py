@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 from app.core.security import SecurityValidator
+from app.core.logging_config import sanitize_for_log
 
 
 logger = logging.getLogger(__name__)
@@ -314,32 +315,42 @@ class ValidationMiddleware(BaseHTTPMiddleware):
         Raises:
             HTTPException: 400 if malicious content detected
         """
+        # ``path`` is assembled from client-controlled JSON object keys
+        # (_validate_dict_recursive: ``current_path = f"{path}.{key}"``), and live
+        # endpoints accept arbitrary-keyed dicts (QueryRequest.filters:
+        # Dict[str, Any]). A key that BOTH trips a detector AND carries CR/LF
+        # therefore reaches this log line raw, and the embedded newline forges a
+        # fake subsequent log record (CWE-117 log injection) -- the same class as
+        # the body/header sites neutralised in rag_pipeline + streaming, which a
+        # field-name-keyed sweep missed here. ``sanitize_for_log`` neutralises the
+        # log representation only; the HTTPException detail (and thus the 400
+        # response body) is left untouched, so request handling is unchanged.
         # XSS detection
         if self.validator.detect_xss(value):
             msg = f"Potentially malicious content (XSS) in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {_client_host(request)}")
+                logger.warning(f"{sanitize_for_log(msg)} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
         # SQL injection detection
         if self.validator.detect_sql_injection(value):
             msg = f"SQL injection pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {_client_host(request)}")
+                logger.warning(f"{sanitize_for_log(msg)} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
         # Path traversal detection
         if self.validator.detect_path_traversal(value):
             msg = f"Path traversal pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {_client_host(request)}")
+                logger.warning(f"{sanitize_for_log(msg)} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
         # Command injection detection
         if self.validator.detect_command_injection(value):
             msg = f"Command injection pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {_client_host(request)}")
+                logger.warning(f"{sanitize_for_log(msg)} - Client: {_client_host(request)}")
             raise HTTPException(400, detail=msg)
 
     async def _validate_headers(self, request: Request):

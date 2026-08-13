@@ -157,6 +157,59 @@ async def test_rag_pipeline_query_handles_null_llm_content(
     assert len(response.sources) == 2
 
 
+@pytest.fixture
+def mock_chat_completion_null_usage():
+    """Mock chat completion whose top-level ``usage`` is None.
+
+    The OpenAI SDK types ``ChatCompletion.usage`` as Optional[CompletionUsage]
+    (required=False, default=None): an OpenAI-compatible provider
+    (Ollama/vLLM/LiteLLM/llama.cpp) may omit usage from a non-streaming chat
+    completion. The generation itself succeeds (content is present), so the
+    pipeline must tolerate a missing usage rather than crashing while reading
+    token counts.
+    """
+    mock_response = Mock()
+    mock_response.choices = [Mock()]
+    mock_response.choices[0].message.content = 'This is a test answer based on the context.'
+    mock_response.choices[0].finish_reason = 'stop'
+    mock_response.usage = None  # provider omitted usage entirely
+    return mock_response
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_query_handles_null_llm_usage(
+    mock_openai_client, mock_retriever, sample_retrieval_results,
+    mock_chat_completion_null_usage
+):
+    """An OpenAI-compatible provider may omit ``usage`` from a non-streaming
+    chat completion (the SDK types it Optional[CompletionUsage],
+    required=False). The generation succeeds, but ``_call_llm`` dereferenced
+    ``response.usage.total_tokens`` unconditionally -- a None usage raised
+    AttributeError -> RuntimeError -> 500 on /query (and tripped the LLM
+    circuit breaker, whose expected_exception is RuntimeError) even though
+    retrieval + generation succeeded. Mirror the metrics-block guard: degrade
+    to 0 tokens when usage is absent."""
+    mock_retriever.retrieve.return_value = sample_retrieval_results
+    mock_openai_client.chat.completions.create = AsyncMock(
+        return_value=mock_chat_completion_null_usage
+    )
+
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4'
+    )
+
+    response = await pipeline.query("A question to a usage-omitting provider.")
+
+    assert isinstance(response, RAGResponse)
+    # Generation succeeded; content returned intact.
+    assert response.answer == 'This is a test answer based on the context.'
+    # No usage available -> 0 tokens rather than crashing the request.
+    assert response.tokens_used == 0
+    assert len(response.sources) == 2
+
+
 @pytest.mark.asyncio
 async def test_rag_pipeline_no_results(mock_openai_client, mock_retriever):
     """Test RAG pipeline with no retrieval results"""

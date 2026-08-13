@@ -149,9 +149,23 @@ Answer:"""
                 # None case changes (crash -> empty answer).
                 if content is None:
                     content = ""
+
+                # The SDK also types ``ChatCompletion.usage`` as
+                # Optional[CompletionUsage] (required=False, default=None): an
+                # OpenAI-compatible provider (Ollama/vLLM/LiteLLM/llama.cpp) may
+                # omit usage from a non-streaming completion. The metrics block
+                # above already guards ``response.usage`` (truthiness), but this
+                # return dereferenced ``response.usage.total_tokens``
+                # unconditionally -- a None usage raised AttributeError, caught
+                # -> RuntimeError -> 500 on /query (and tripped the LLM circuit
+                # breaker, whose expected_exception is RuntimeError) even though
+                # retrieval + generation succeeded. Mirror that guard: a present
+                # usage is byte-identical; only the None case changes (crash ->
+                # 0 tokens reported).
+                tokens_used = response.usage.total_tokens if response.usage else 0
                 return {
                     'answer': content,
-                    'tokens_used': response.usage.total_tokens,
+                    'tokens_used': tokens_used,
                     'finish_reason': response.choices[0].finish_reason
                 }
 

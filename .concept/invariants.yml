@@ -226,3 +226,46 @@ invariants:
         quote: "assert identifier == 'key:test_api_key_123' / assert identifier.startswith('ip:')"
       - source: "tests/unit/test_rate_limit.py#L155-L159"
         quote: "assert settings.rate_limit_enabled is True"
+
+  - id: "INV-EMB-001"
+    related_terms: ["EmbeddingModel"]
+    status: "stable"
+    strength: "hard"
+    statement: "OpenAIEmbeddings の全失敗経路（API エラーに加え、degenerate provider 応答: 空 data / バッチ入力に対する短い data / 長さ0のベクトル要素）は RuntimeError(\"Failed to generate embedding(s)\") を送出する。生の IndexError/ValueError を漏らさず、非空入力に対して短い・空のリストも返さない。"
+    rationale: "embed_query の [0] indexing は空 data で IndexError→/query 500 になり、embed_texts が短いリストを返すと ids と vectors の数が不整合となり FAISS index.add が ValueError→/documents/ingest 500 になる。モジュール契約（全embedding失敗は RuntimeError）で一貫させ、上流のエラーハンドリングとCircuitBreaker(expected_exception=RuntimeError)を機能させるため。"
+    evidence:
+      - source: "tests/unit/test_embeddings.py#L164-L189"
+        quote: "test_embed_query_empty_data_raises_runtime_error: Empty data (degenerate provider) must raise RuntimeError, not IndexError. / pytest.raises(RuntimeError, match=\"Failed to generate embedding\")"
+      - source: "tests/unit/test_embeddings.py#L189-L265"
+        quote: "test_embed_texts_empty_data/empty_vector: batch sibling — returning a short list for non-empty input upserts fewer vectors than ids -> FAISS index.add raises ValueError -> 500 on ingest."
+    checks:
+      - type: "test"
+        target: "tests/unit/test_embeddings.py"
+
+  - id: "INV-RES-005"
+    related_terms: ["RAGPipeline", "CircuitBreaker"]
+    status: "stable"
+    strength: "hard"
+    statement: "RAGPipeline は choices: [] の非ストリーミング ChatCompletion（SDK は choices を List 型として型付けし空もあり得る）を異常として落とさず、null-content ガイドと同じく answer=\"\" に縮退させる（confidence は同一経路、sources は保持、HTTP 500 化しない）。"
+    rationale: "retrieval と LLM HTTP 呼び出し自体は成功している degenerate provider 応答で、response.choices[0] の無条件 indexing が IndexError→RuntimeError→/query 500（かつ LLM CircuitBreaker を誤トリップ）していたため。縮退応答で一貫させるため。"
+    evidence:
+      - source: "tests/unit/test_rag_pipeline.py#L233-L259"
+        quote: "test_rag_pipeline_query_handles_empty_choices: The pipeline must degrade to an empty answer / assert response.answer == \"\" / assert len(response.sources) == 2"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_rag_pipeline.py"
+
+  - id: "INV-STREAM-001"
+    related_terms: ["StreamingRAGService"]
+    status: "stable"
+    strength: "hard"
+    statement: "StreamingRAGService.stream_query_response は (a) choices=[] のチャンク（usage 専用チャンク等）をスキップし、(b) provider が stream_options={\"include_usage\": true} を無視して usage チャンクを送らない場合でも、ループ正常終了時に is_done=true の completion チャンク（sources + latency/token メタデータ搭載）を必ず emit する。"
+    rationale: "completion チャンクが usage チャンク到着に結合されていたため、Ollama/llama.cpp/旧vLLM等の no-usage provider ではコンテンツは届くが sources と done マーカーが欠落し、クライアントはストリーム終了を検知できなかったため。"
+    evidence:
+      - source: "tests/unit/test_query_stream_coverage.py#L323-L357"
+        quote: "TestStreamNoUsageChunkFallback.test_no_usage_chunk_still_emits_done_and_sources: no-usage stream must still emit an is_done completion chunk / assert final.get(\"sources\")"
+      - source: "tests/unit/test_query_stream_coverage.py#L39-L43"
+        quote: "_llm_stream の最終チャンク yield Mock(choices=[], usage=Mock(completion_tokens=4)) — choices=[] チャンクはコンテンツ抽出されずスキップされる"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_query_stream_coverage.py"

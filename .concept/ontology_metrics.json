@@ -6,20 +6,20 @@
     "aux": 8
   },
   "draft_terms": 0,
-  "invariants": 20,
+  "invariants": 23,
   "mappings": 31,
   "ambiguities": 3,
   "conflicts": 6,
   "term_queue_pending": 0,
-  "test_files": 24,
-  "test_files_note": "strict test_*.py/*_test.py count under tests/ (excludes __init__.py x3 and conftest.py x1). Prior cycles reported 28 (all .py incl. non-test); methodology corrected in cycle 5.",
+  "test_files": 45,
+  "test_files_note": "strict test_*.py/*_test.py count under tests/ (44 unit + 1 integration). Was 24 at last recompute; suite grew to 45 files / 876 tests without metrics refresh - recounted 2026-08-23.",
   "decisions_md_lines": 91,
   "metrics": {
     "Q1_ontology_coverage_class_resolution_pct": 96.8,
     "Q1_note": "30/31 terms resolve to a concrete `class <name>` in app/; RateLimiter is the lone non-class term (slowapi-based, evidenced by helper fns get_user_id/get_client_ip). All app/ subpackages have anchor terms.",
     "Q2_mapping_rate_pct": 100.0,
-    "Q3_invariant_to_testfile_ratio_pct": 83.3,
-    "Q3_note": "20 invariants / 24 strict test files. (Was 71.4% using 28 = all .py incl __init__/conftest; recomputed against strict count.)",
+    "Q3_invariant_to_testfile_ratio_pct": 51.1,
+    "Q3_note": "23 invariants / 45 strict test files = 51.1%. Recounted 2026-08-23 (was 83.3% on stale 24-file denominator); +3 degenerate-provider invariants (INV-EMB-001/INV-RES-005/INV-STREAM-001) extracted to restore >=50%.",
     "Q4_draft_rate_pct": 0.0,
     "Q5_unmapped_claims_rate_pct": 0.0,
     "Q5_note": "claims.ndjson is empty (0 claims); ratio is vacuously 0%.",
@@ -75,5 +75,6 @@
     "test_run_evidence": "pytest ::test_context_compression + ::test_confidence_calculation -> 2 FAILED, TypeError 'missing required positional argument: source' at L152 and L248 (mise py3.13, 2026-07-27)",
     "code_changed_since_bootstrap": false,
     "quality_gate_all_pass": true
-  }
+  },
+  "run_id": "2026-08-23T00:15:00Z"
 }

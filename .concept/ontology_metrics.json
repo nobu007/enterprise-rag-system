@@ -11,15 +11,15 @@
   "ambiguities": 3,
   "conflicts": 6,
   "term_queue_pending": 0,
-  "test_files": 45,
-  "test_files_note": "strict test_*.py/*_test.py count under tests/ (44 unit + 1 integration). Was 24 at last recompute; suite grew to 45 files / 876 tests without metrics refresh - recounted 2026-08-23.",
+  "test_files": 46,
+  "test_files_note": "strict test_*.py/*_test.py count under tests/ (45 unit + 1 integration). 45->46 on 2026-08-25 with test_concept_metrics_consistency.py (stale-metrics guard test, now enforced by the suite itself).",
   "decisions_md_lines": 101,
   "metrics": {
     "Q1_ontology_coverage_class_resolution_pct": 96.8,
     "Q1_note": "30/31 terms resolve to a concrete `class <name>` in app/; RateLimiter is the lone non-class term (slowapi-based, evidenced by helper fns get_user_id/get_client_ip). All app/ subpackages have anchor terms.",
     "Q2_mapping_rate_pct": 100.0,
-    "Q3_invariant_to_testfile_ratio_pct": 51.1,
-    "Q3_note": "23 invariants / 45 strict test files = 51.1%. Recounted 2026-08-23 (was 83.3% on stale 24-file denominator); +3 degenerate-provider invariants (INV-EMB-001/INV-RES-005/INV-STREAM-001) extracted to restore >=50%.",
+    "Q3_invariant_to_testfile_ratio_pct": 50.0,
+    "Q3_note": "23 invariants / 46 strict test files = 50.0%. Denominator 45->46 on 2026-08-25 with test_concept_metrics_consistency.py; drift of this field is now caught by the suite (test_q3_ratio_derives_from_counts).",
     "Q4_draft_rate_pct": 0.0,
     "Q5_unmapped_claims_rate_pct": 0.0,
     "Q5_note": "3 claims (all mapped to canonical terms: EmbeddingModel/RAGPipeline/StreamingRAGService); unmapped 0%. Refreshed 2026-08-25 - former '0 claims, vacuously 0%' note contradicted the 3 claims appended with INV-EMB-001/INV-RES-005/INV-STREAM-001.",
@@ -76,5 +76,5 @@
     "code_changed_since_bootstrap": false,
     "quality_gate_all_pass": true
   },
-  "run_id": "2026-08-23T00:15:00Z"
+  "run_id": "2026-08-24T19:40:17Z"
 }

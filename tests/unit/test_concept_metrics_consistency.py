@@ -6,6 +6,11 @@ Stale-metrics drift required manual correction in two consecutive cycles
 These tests re-derive every machine-checkable field from the actual .concept/
 files and the tests/ tree, so a concept edit that forgets to refresh
 ontology_metrics.json fails the suite instead of surfacing in eval.
+
+They additionally enforce the quality-gate thresholds themselves: a plain
+metrics refresh can walk a gate below its bar silently (Q3 sits exactly at
+50.0% = 23/46, so one more test file without a matching invariant would
+otherwise degrade the gate undetected).
 """
 
 import json
@@ -152,6 +157,56 @@ class TestQualityGateDerivations:
             and charter.get("milestones")
         )
         assert metrics["metrics"]["Q7_charter_complete"] is complete
+
+
+class TestQualityGateThresholds:
+    """Gates must PASS, not merely be self-consistent with the metrics file
+
+    The derivation tests above catch a stale metrics file, but they would
+    happily accept a freshly-refreshed file whose gate regressed below its
+    threshold. These tests fail the suite when a gate degrades, forcing
+    either a real fix (e.g. extracting an invariant) or a conscious
+    re-baseline decision.
+    """
+
+    def test_q1_class_resolution_at_least_80_pct(self):
+        assert _load_metrics()["metrics"]["Q1_ontology_coverage_class_resolution_pct"] >= 80.0
+
+    def test_q2_mapping_rate_at_least_90_pct(self):
+        assert _load_metrics()["metrics"]["Q2_mapping_rate_pct"] >= 90.0
+
+    def test_q3_invariant_ratio_at_least_50_pct(self):
+        # Derived from the recorded counts (pinned to reality by
+        # TestTopLevelCounts), not from the recorded percentage.
+        metrics = _load_metrics()
+        ratio = metrics["invariants"] / metrics["test_files"] * 100
+        assert ratio >= 50.0
+
+    def test_q4_draft_rate_at_most_30_pct(self):
+        assert _load_metrics()["metrics"]["Q4_draft_rate_pct"] <= 30.0
+
+    def test_q5_unmapped_claims_rate_at_most_20_pct(self):
+        total, unmapped = _claims()
+        rate = unmapped / total * 100 if total else 0.0
+        assert rate <= 20.0
+
+    def test_q6_terms_count_at_most_80(self):
+        assert len(_terms()) <= 80
+
+    def test_q7_charter_complete_is_true(self):
+        assert _load_metrics()["metrics"]["Q7_charter_complete"] is True
+
+    def test_q8_every_term_has_evidence(self):
+        assert all(t.get("evidence") for t in _terms().values())
+
+    def test_latest_cycle_claims_all_gates_pass(self):
+        metrics = _load_metrics()
+        cycles = [
+            int(k.removeprefix("cycle").split("_")[0])
+            for k in metrics
+            if k.endswith("_maintenance")
+        ]
+        assert metrics[f"cycle{max(cycles)}_maintenance"]["quality_gate_all_pass"] is True
 
 
 class TestMappingCoverage:

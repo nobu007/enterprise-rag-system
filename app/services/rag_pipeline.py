@@ -479,7 +479,7 @@ class StreamingRAGPipeline(RAGPipeline):
             )
 
             async for chunk in stream:
-                if chunk.choices[0].delta.content:
+                if chunk.choices and chunk.choices[0].delta.content:
                     yield {
                         'type': 'answer',
                         'content': chunk.choices[0].delta.content,

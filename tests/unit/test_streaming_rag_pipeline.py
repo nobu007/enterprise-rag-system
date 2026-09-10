@@ -47,6 +47,13 @@ async def _chunk_stream(contents):
         yield chunk
 
 
+async def _chunk_stream_with_empty_choices():
+    """Async-iterable containing a provider's usage-only chunk."""
+    yield Mock(choices=[])
+    chunk = Mock(choices=[Mock(delta=Mock(content="Hello"))])
+    yield chunk
+
+
 def _pipeline(retriever, llm_client):
     return StreamingRAGPipeline(
         retriever=retriever,
@@ -106,6 +113,22 @@ class TestStreamQueryHappyPath:
         assert final["done"] is True
         assert final["content"] == ""
         assert "latency_ms" in final
+
+    @pytest.mark.asyncio
+    async def test_ignores_empty_choices_chunk(self, retriever, llm_client):
+        """A usage-only chunk must not abort the streaming response."""
+        retriever.retrieve.return_value = _results()
+        llm_client.chat.completions.create = AsyncMock(
+            return_value=_chunk_stream_with_empty_choices()
+        )
+        pipeline = _pipeline(retriever, llm_client)
+
+        items = [x async for x in pipeline.stream_query("q")]
+
+        answers = [item for item in items if item["type"] == "answer"]
+        assert "Hello" in [item["content"] for item in answers]
+        assert answers[-1]["done"] is True
+        assert not any(item["type"] == "error" for item in items)
 
 
 class TestStreamQueryError:

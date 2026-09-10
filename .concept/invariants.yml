@@ -256,16 +256,22 @@ invariants:
         target: "tests/unit/test_rag_pipeline.py"
 
   - id: "INV-STREAM-001"
-    related_terms: ["StreamingRAGService"]
+    related_terms: ["StreamingRAGService", "StreamingRAGPipeline"]
     status: "stable"
     strength: "hard"
-    statement: "StreamingRAGService.stream_query_response は (a) choices=[] のチャンク（usage 専用チャンク等）をスキップし、(b) provider が stream_options={\"include_usage\": true} を無視して usage チャンクを送らない場合でも、ループ正常終了時に is_done=true の completion チャンク（sources + latency/token メタデータ搭載）を必ず emit する。"
-    rationale: "completion チャンクが usage チャンク到着に結合されていたため、Ollama/llama.cpp/旧vLLM等の no-usage provider ではコンテンツは届くが sources と done マーカーが欠落し、クライアントはストリーム終了を検知できなかったため。"
+    statement: "StreamingRAGService.stream_query_response と StreamingRAGPipeline.stream_query は (a) choices=[] のチャンク（usage 専用チャンク等）をコンテンツ抽出対象からスキップし、(b) ストリームが正常終了した場合に完了マーカー（それぞれ is_done=true / done=true）を必ず emit する。StreamingRAGService の完了チャンクは sources と latency/token メタデータも搭載する。"
+    rationale: "choices=[] を含む OpenAI 互換ストリームで先頭要素を無条件参照すると IndexError となり、StreamingRAGPipeline は正常な後続トークンと完了マーカーを失う。併せて、usage チャンクを送らない provider でも StreamingRAGService の sources と done マーカーを維持するため。"
     evidence:
       - source: "tests/unit/test_query_stream_coverage.py#L323-L357"
         quote: "TestStreamNoUsageChunkFallback.test_no_usage_chunk_still_emits_done_and_sources: no-usage stream must still emit an is_done completion chunk / assert final.get(\"sources\")"
       - source: "tests/unit/test_query_stream_coverage.py#L39-L43"
         quote: "_llm_stream の最終チャンク yield Mock(choices=[], usage=Mock(completion_tokens=4)) — choices=[] チャンクはコンテンツ抽出されずスキップされる"
+      - source: "app/services/rag_pipeline.py#L481-L487"
+        quote: "async for chunk in stream: if chunk.choices and chunk.choices[0].delta.content: yield ... done=False"
+      - source: "tests/unit/test_streaming_rag_pipeline.py#L117-L131"
+        quote: "test_ignores_empty_choices_chunk: choices=[] のチャンク後も Hello と done=true を返し error を出さない"
     checks:
       - type: "test"
         target: "tests/unit/test_query_stream_coverage.py"
+      - type: "test"
+        target: "tests/unit/test_streaming_rag_pipeline.py"

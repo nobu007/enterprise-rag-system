@@ -89,9 +89,12 @@ Modern enterprises face critical challenges in knowledge management:
 ![Demo GIF](docs/images/demo.gif)
 
 ### API Usage
+
+Application routes are mounted under `/api/v1`; health and metrics endpoints remain at the root.
+
 ```bash
 # Basic query (with re-ranking enabled by default)
-curl -X POST http://localhost:8000/query \
+curl -X POST http://localhost:8000/api/v1/query/ \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is our company policy on remote work?",
@@ -101,7 +104,7 @@ curl -X POST http://localhost:8000/query \
   }'
 
 # Query without re-ranking (faster, less accurate)
-curl -X POST http://localhost:8000/query \
+curl -X POST http://localhost:8000/api/v1/query/ \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is our company policy on remote work?",
@@ -111,7 +114,7 @@ curl -X POST http://localhost:8000/query \
   }'
 
 # Query with feature-based ranking (multi-feature scoring)
-curl -X POST http://localhost:8000/query \
+curl -X POST http://localhost:8000/api/v1/query/ \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is our company policy on remote work?",
@@ -153,7 +156,7 @@ curl -X POST http://localhost:8000/query \
 ```javascript
 // Connect to streaming endpoint
 const eventSource = new EventSource(
-  '/query/stream?' + new URLSearchParams({
+  '/api/v1/query/stream?' + new URLSearchParams({
     query: 'Explain our company remote work policy in detail',
     top_k: 5,
     use_hybrid: true,
@@ -200,7 +203,7 @@ import json
 
 # Stream query response
 response = requests.get(
-    'http://localhost:8000/query/stream',
+    'http://localhost:8000/api/v1/query/stream',
     params={
         'query': 'Explain our company remote work policy',
         'top_k': 5,
@@ -231,7 +234,7 @@ for line in response.iter_lines():
 #### cURL Example
 ```bash
 # Stream query with cURL
-curl -N "http://localhost:8000/query/stream?query=What%20is%20RAG%3F&top_k=5"
+curl -N "http://localhost:8000/api/v1/query/stream?query=What%20is%20RAG%3F&top_k=5"
 
 # Output:
 # data: {"content": "Retrieval-", "is_done": false}
@@ -271,7 +274,7 @@ Every API request includes a unique `X-Request-ID` header for distributed tracin
 
 ```bash
 # Making a request with a custom request ID
-curl -X POST http://localhost:8000/query \
+curl -X POST http://localhost:8000/api/v1/query/ \
   -H "Content-Type: application/json" \
   -H "X-Request-ID: my-custom-request-id-123" \
   -d '{"query": "test query"}'
@@ -293,7 +296,7 @@ For processing large numbers of documents efficiently, the system provides async
 #### Starting a Batch Job
 
 ```bash
-curl -X POST "http://localhost:8000/documents/batch" \
+curl -X POST "http://localhost:8000/api/v1/documents/batch" \
   -H "Content-Type: application/json" \
   -d '{
     "documents": [
@@ -327,7 +330,7 @@ curl -X POST "http://localhost:8000/documents/batch" \
 #### Checking Batch Status
 
 ```bash
-curl "http://localhost:8000/documents/batch/{task_id}/status"
+curl "http://localhost:8000/api/v1/documents/batch/{task_id}/status"
 ```
 
 **Response (Processing):**
@@ -476,7 +479,7 @@ When documents fail validation during ingestion, the API returns:
 ##### Create Versioned Document
 
 ```bash
-curl -X POST http://localhost:8000/documents/versioning \
+curl -X POST http://localhost:8000/api/v1/documents/versioning \
   -H "Content-Type: application/json" \
   -d '{
     "document_id": "policy-001",
@@ -494,7 +497,7 @@ curl -X POST http://localhost:8000/documents/versioning \
 ##### Update Document (Creates New Version)
 
 ```bash
-curl -X PUT http://localhost:8000/documents/versioning/policy-001 \
+curl -X PUT http://localhost:8000/api/v1/documents/versioning/policy-001 \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Remote work is now allowed up to 5 days per week...",
@@ -512,16 +515,16 @@ curl -X PUT http://localhost:8000/documents/versioning/policy-001 \
 
 ```bash
 # Get version history (without full content)
-curl http://localhost:8000/documents/versioning/policy-001/history
+curl http://localhost:8000/api/v1/documents/versioning/policy-001/history
 
 # Get version history with full content
-curl "http://localhost:8000/documents/versioning/policy-001/history?include_content=true"
+curl "http://localhost:8000/api/v1/documents/versioning/policy-001/history?include_content=true"
 ```
 
 ##### Rollback to Previous Version
 
 ```bash
-curl -X POST http://localhost:8000/documents/versioning/policy-001/rollback \
+curl -X POST http://localhost:8000/api/v1/documents/versioning/policy-001/rollback \
   -H "Content-Type: application/json" \
   -d '{
     "target_version": 1,
@@ -533,31 +536,31 @@ curl -X POST http://localhost:8000/documents/versioning/policy-001/rollback \
 ##### Compare Versions
 
 ```bash
-curl "http://localhost:8000/documents/versioning/policy-001/compare?version1=1&version2=3"
+curl "http://localhost:8000/api/v1/documents/versioning/policy-001/compare?version1=1&version2=3"
 ```
 
 ##### Get Specific Version
 
 ```bash
-curl http://localhost:8000/documents/versioning/policy-001/versions/2
+curl http://localhost:8000/api/v1/documents/versioning/policy-001/versions/2
 ```
 
 ##### List All Versioned Documents
 
 ```bash
-curl http://localhost:8000/documents/versioning
+curl http://localhost:8000/api/v1/documents/versioning
 ```
 
 ##### Get Versioning Statistics
 
 ```bash
-curl http://localhost:8000/documents/versioning/stats
+curl http://localhost:8000/api/v1/documents/versioning/stats
 ```
 
 ##### Delete Document (All Versions)
 
 ```bash
-curl -X DELETE http://localhost:8000/documents/versioning/policy-001
+curl -X DELETE http://localhost:8000/api/v1/documents/versioning/policy-001
 ```
 
 #### Response Examples

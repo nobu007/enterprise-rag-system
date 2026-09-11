@@ -90,7 +90,7 @@ def _make_pipeline(retrieve_side_effect=None):
 
 
 def _make_llm_client():
-    client = AsyncMock(spec=AsyncOpenAI)
+    client = AsyncMock(spec=AsyncOpenAI(api_key="test"))
     # Fresh async generator per call so each request gets its own stream.
     client.chat.completions.create = AsyncMock(
         side_effect=lambda *a, **k: _llm_stream()

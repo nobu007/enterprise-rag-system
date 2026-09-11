@@ -54,7 +54,7 @@ class RetrievalResult:
 @pytest.fixture
 def mock_llm_client():
     """Create a mock AsyncOpenAI client"""
-    client = AsyncMock(spec=AsyncOpenAI)
+    client = AsyncMock(spec=AsyncOpenAI(api_key="test"))
     return client
 
 

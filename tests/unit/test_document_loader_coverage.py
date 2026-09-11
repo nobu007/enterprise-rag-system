@@ -51,10 +51,16 @@ def _install_pypdf(monkeypatch, pages):
 class TestLoadPdf:
     """Cover load_pdf ImportError + happy path (L124-156)."""
 
-    def test_raises_import_error_when_pypdf_absent(self):
-        # pypdf is not installed in this environment.
+    def test_raises_import_error_when_pypdf_absent(self, monkeypatch, tmp_path):
+        # Simulate pypdf being missing regardless of the ambient venv (a
+        # None entry makes `from pypdf import PdfReader` raise ImportError),
+        # and pass a file that EXISTS so load_pdf reaches the import branch
+        # instead of its earlier FileNotFoundError check.
+        monkeypatch.setitem(sys.modules, "pypdf", None)
+        existing = tmp_path / "doc.pdf"
+        existing.write_bytes(b"%PDF-1.4")
         with pytest.raises(ImportError, match="pypdf not installed"):
-            DocumentLoader.load_pdf("anything.pdf")
+            DocumentLoader.load_pdf(str(existing))
 
     def test_loads_non_empty_pages_and_skips_blank(
         self, monkeypatch, tmp_path

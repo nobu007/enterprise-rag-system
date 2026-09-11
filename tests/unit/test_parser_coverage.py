@@ -184,8 +184,12 @@ class TestParsePdfWithPypdf:
         fake_pypdf = Mock()
         fake_pypdf.PdfReader = Mock(return_value=reader)
         monkeypatch.setitem(sys.modules, "pypdf", fake_pypdf)
+        # Simulate pdfplumber being missing regardless of the ambient venv
+        # (a None entry makes the probe import in DocumentParser.__init__
+        # raise ImportError), so the pypdf fallback path is exercised.
+        monkeypatch.setitem(sys.modules, "pdfplumber", None)
 
-        parser = DocumentParser()  # pdfplumber not installed -> False
+        parser = DocumentParser()  # pdfplumber "absent" -> False
         assert parser.pdfplumber_available is False
 
         target = tmp_path / "doc.pdf"

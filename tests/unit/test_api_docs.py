@@ -4,6 +4,7 @@ APIドキュメントとOpenAPIスキーマ検証のテスト
 """
 
 import inspect
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -145,6 +146,29 @@ class TestAPIDocumentation:
 
         assert "requests.post(" in route_docstring
         assert "curl -N -X POST" in streaming_section
+
+    def test_multi_tenant_examples_match_query_route(self):
+        """Keep both multi-tenant README examples aligned with the mounted
+        query route."""
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        section_marker = "## 👥 Multi-Tenant Support"
+        section_end = "## 🏗️ Architecture"
+
+        assert section_marker in readme
+        multi_tenant_section = readme.split(section_marker, 1)[1]
+        assert section_end in multi_tenant_section
+        multi_tenant_section = multi_tenant_section.split(section_end, 1)[0]
+
+        query_path = "/api/v1/query/"
+        assert query_path in app.openapi()["paths"]
+        example_urls = re.findall(
+            r'curl -X POST "([^"]+)"', multi_tenant_section
+        )
+
+        assert example_urls == [
+            f"http://localhost:8000{query_path}",
+            f"http://localhost:8000{query_path}",
+        ]
 
     def test_documents_endpoint_documentation(self, client):
         """Test documents endpoints have comprehensive documentation / ドキュメントエンドポイントが包括的なドキュメントを持っていることをテスト"""

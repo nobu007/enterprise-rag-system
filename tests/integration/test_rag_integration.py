@@ -9,6 +9,8 @@ import tempfile
 import os
 from unittest.mock import AsyncMock, MagicMock
 
+from app.core.embeddings import EmbeddingModel
+
 
 @pytest.fixture
 def temp_vector_db():
@@ -44,11 +46,27 @@ def _make_mock_embedding_model():
     so the integration tests below exercise the real vector-db / retrieval /
     metadata-filter machinery without valid ``OPENAI_API_KEY`` credentials.
     """
-    model = MagicMock()
+    model = MagicMock(spec=EmbeddingModel)
     model.embed_texts.side_effect = lambda texts: [[0.1] * 1536 for _ in texts]
     model.embed_query.return_value = [0.1] * 1536
     model.dimension = 1536
     return model
+
+
+@pytest.mark.integration
+def test_mock_embedding_model_matches_embedding_contract():
+    """Keep the deterministic test double compatible with ``EmbeddingModel``.
+
+    Both batch and query vectors must use the configured dimension.
+    """
+    model = _make_mock_embedding_model()
+    texts = ["first document", "second document"]
+
+    assert isinstance(model, EmbeddingModel)
+    embeddings = model.embed_texts(texts)
+    assert len(embeddings) == len(texts)
+    assert all(len(embedding) == model.dimension for embedding in embeddings)
+    assert len(model.embed_query("search query")) == model.dimension
 
 
 @pytest.mark.integration

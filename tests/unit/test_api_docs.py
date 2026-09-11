@@ -3,10 +3,18 @@ Test API documentation and OpenAPI schema validation
 APIドキュメントとOpenAPIスキーマ検証のテスト
 """
 
-import pytest
+import inspect
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from fastapi.testclient import TestClient
+
 from app.main import app
+from app.api.routes.query import stream_query
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture
@@ -94,6 +102,36 @@ class TestAPIDocumentation:
         request_body = post_details["requestBody"]
         assert "content" in request_body
         assert "application/json" in request_body["content"]
+
+    def test_streaming_documentation_matches_post_json_contract(self):
+        """Keep copied streaming examples aligned with the mounted API."""
+        schema = app.openapi()
+        stream_path = schema["paths"].get("/api/v1/query/stream")
+
+        assert stream_path is not None, "Streaming endpoint not found"
+        assert set(stream_path) == {"post"}
+
+        post_details = stream_path["post"]
+        request_body = post_details["requestBody"]["content"]
+        assert "application/json" in request_body
+        assert request_body["application/json"]["schema"]["$ref"].endswith(
+            "/StreamingQueryRequest"
+        )
+        assert "text/event-stream" in post_details["responses"]["200"]["content"]
+
+        openapi_description = post_details["description"]
+        route_docstring = inspect.getdoc(stream_query) or ""
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        streaming_section = readme.split("### 🌊 Streaming Responses (New!)", 1)[1]
+        streaming_section = streaming_section.split("### Request Tracking", 1)[0]
+        for document in (openapi_description, route_docstring, streaming_section):
+            assert "/api/v1/query/stream" in document
+            assert "EventSource(" not in document
+            assert "requests.get(" not in document
+            assert "http://localhost:8000/query/stream" not in document
+
+        assert "requests.post(" in route_docstring
+        assert "curl -N -X POST" in streaming_section
 
     def test_documents_endpoint_documentation(self, client):
         """Test documents endpoints have comprehensive documentation / ドキュメントエンドポイントが包括的なドキュメントを持っていることをテスト"""

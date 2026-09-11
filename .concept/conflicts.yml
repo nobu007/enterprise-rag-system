@@ -64,13 +64,11 @@ conflicts:
     nli: "contradiction"
     items:
       - claim: "README の API 例と mappings.yml はクエリエンドポイントを '/query' と表記する"
-        source: "doc:README.md#L88-L91 (curl -X POST http://localhost:8000/query) / concept:.concept/mappings.yml (api: 'POST /query', 'POST /query/stream', 'POST /query/batch')"
+        source: "history:bbb2dcf^:README.md#L88-L91 / history:pre-2026-09-12:.concept/mappings.yml (旧ドキュメントと旧マッピング)"
       - claim: "実際のパスは '/api/v1/query/' (main.py prefix '/api/v1' + query router prefix '/query' + route '/')。batch は '/api/v1/query/batch'、stream は '/api/v1/query/stream'。main.py 自身の docstring も '/api/v1/query/' を正として記載"
         source: "code:app/api/routes/query.py#L23 (router = APIRouter(prefix=\"/query\", ...)) / code:app/main.py#L247 (include_router prefix=\"/api/v1\") / doc:app/main.py#L137 ('/api/v1/query/ endpoint: 60 requests/minute')"
-    status: "open"
-    active_workaround:
-      decision_key: "AUTO:QueryApiPath.path_contract:versioned_prefix"
-      summary: "コード(実際のマウントパス)を正とし、クエリAPIは '/api/v1/query/{,batch,stream}' と扱う。mappings.yml の '/query' 系表記は論理パスの簡略表現として許容し、正確なパスは本矛盾に記録。README の curl 例の修正は docs 整備に委ねる（概念整備のスコープ外）。"
+    status: "resolved"
+    resolution: "解決済 (2026-09-12): 実際のマウントパスを正として mappings.yml の API 対応を /api/v1/query/{,batch,stream} に更新し、README・ルート docstring・OpenAPI description のストリーミング例を POST JSON 契約へ同期。tests/unit/test_api_docs.py の契約テストで再発を検出する。"
 
   - id: "CFLT-SCHEMA-001"
     term: "RetrievalResult"

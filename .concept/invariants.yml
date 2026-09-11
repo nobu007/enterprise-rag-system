@@ -118,7 +118,9 @@ invariants:
         quote: "test_query_endpoint_success: client.post('/query/') -> status_code == 200, 構造化応答(answer/confidence/latency_ms/tokens_used/sources)"
       - source: "app/main.py#L23,L248"
         quote: "main.py imports documents and includes documents.router with prefix='/api/v1'."
-      - source: "tests/unit/test_api_docs.py#L98-L107"
+      - source: "tests/unit/test_api_docs.py#L104-L132"
+        quote: "test_streaming_documentation_matches_post_json_contract asserts the mounted POST path, JSON request body, SSE response, and client examples."
+      - source: "tests/unit/test_api_docs.py#L134-L145"
         quote: "test_documents_endpoint_documentation asserts '/api/v1/documents/ingest' is present in the OpenAPI paths."
 
   - id: "INV-CORE-001"

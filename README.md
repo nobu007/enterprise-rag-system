@@ -154,46 +154,43 @@ curl -X POST http://localhost:8000/api/v1/query/ \
 
 #### JavaScript/TypeScript Example
 ```javascript
-// Connect to streaming endpoint
-const eventSource = new EventSource(
-  '/api/v1/query/stream?' + new URLSearchParams({
+// POST a JSON body to the streaming endpoint (EventSource only supports GET)
+const response = await fetch('/api/v1/query/stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
     query: 'Explain our company remote work policy in detail',
     top_k: 5,
     use_hybrid: true,
     rerank: true
   })
-);
+});
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
 let fullResponse = '';
+let buffer = '';
+const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
 
-// Handle incoming chunks
-eventSource.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-
-  if (data.content) {
-    // Append each chunk to the response
-    fullResponse += data.content;
-    console.log('Chunk:', data.content);
-
-    // Update UI in real-time
-    document.getElementById('answer').textContent = fullResponse;
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buffer += value;
+  const events = buffer.split('\n\n');
+  buffer = events.pop();
+  for (const event of events) {
+    const line = event.split('\n').find((item) => item.startsWith('data: '));
+    if (!line) continue;
+    const data = JSON.parse(line.slice(6));
+    if (data.content) {
+      fullResponse += data.content;
+      document.getElementById('answer').textContent = fullResponse;
+    }
+    if (data.is_done) {
+      console.log('Complete response:', fullResponse);
+      console.log('Sources:', data.sources);
+    }
   }
-
-  if (data.is_done) {
-    // Stream completed
-    console.log('Complete response:', fullResponse);
-    console.log('Sources:', data.sources);
-    console.log('Metadata:', data.metadata);
-
-    eventSource.close();
-  }
-};
-
-// Handle errors
-eventSource.onerror = (error) => {
-  console.error('Stream error:', error);
-  eventSource.close();
-};
+}
 ```
 
 #### Python Example
@@ -201,16 +198,17 @@ eventSource.onerror = (error) => {
 import requests
 import json
 
-# Stream query response
-response = requests.get(
+# Stream query response with a JSON POST body
+response = requests.post(
     'http://localhost:8000/api/v1/query/stream',
-    params={
+    json={
         'query': 'Explain our company remote work policy',
         'top_k': 5,
         'use_hybrid': True
     },
     stream=True
 )
+response.raise_for_status()
 
 full_response = ''
 
@@ -233,8 +231,10 @@ for line in response.iter_lines():
 
 #### cURL Example
 ```bash
-# Stream query with cURL
-curl -N "http://localhost:8000/api/v1/query/stream?query=What%20is%20RAG%3F&top_k=5"
+# Stream query with a JSON POST body
+curl -N -X POST "http://localhost:8000/api/v1/query/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"What is RAG?","top_k":5}'
 
 # Output:
 # data: {"content": "Retrieval-", "is_done": false}

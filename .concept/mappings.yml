@@ -3,13 +3,13 @@ mappings:
     code_symbols:
       - "app/services/rag_pipeline.py::class RAGPipeline"
     db: []
-    api: ["POST /query"]
+    api: ["POST /api/v1/query/"]
 
   StreamingRAGPipeline:
     code_symbols:
       - "app/services/rag_pipeline.py::class StreamingRAGPipeline"
     db: []
-    api: ["POST /query/stream"]
+    api: ["POST /api/v1/query/stream"]
 
   HybridRetriever:
     code_symbols:
@@ -112,7 +112,7 @@ mappings:
       - "app/models/schemas.py::class QueryRequest"
       - "app/api/routes/query.py::class QueryRequest"
     db: []
-    api: ["POST /query", "POST /query/stream (StreamingQueryRequest)", "POST /query/batch (BatchQueryRequest)"]
+    api: ["POST /api/v1/query/", "POST /api/v1/query/stream (StreamingQueryRequest)", "POST /api/v1/query/batch (BatchQueryRequest)"]
 
   QueryResponse:
     code_symbols:
@@ -120,7 +120,7 @@ mappings:
       - "app/api/routes/query.py::class QueryResponse"
       - "app/models/schemas.py::class Source"
     db: []
-    api: ["GET /query response"]
+    api: ["POST /api/v1/query/ response"]
 
   IngestRequest:
     code_symbols:
@@ -157,7 +157,7 @@ mappings:
       - "app/services/streaming.py::class StreamingRAGService"
       - "app/services/streaming.py::class StreamingChunk"
     db: []
-    api: ["POST /query/stream (SSE)"]
+    api: ["POST /api/v1/query/stream (SSE)"]
 
   Settings:
     code_symbols:

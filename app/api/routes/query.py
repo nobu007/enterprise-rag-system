@@ -307,7 +307,11 @@ async def batch_query(
 @router.post(
     "/stream",
     summary="Stream RAG Query Response / RAGクエリレスポンスのストリーミング",
-    description="Stream RAG query responses in real-time using Server-Sent Events (SSE) / Server-Sent Events (SSE) を使用してRAGクエリレスポンスをリアルタイムにストリーミングします",
+    description=(
+        "POST /api/v1/query/stream accepts a JSON request body and returns "
+        "Server-Sent Events (SSE) / JSONリクエストボディを受け取り、"
+        "Server-Sent Events (SSE) を返します"
+    ),
     response_description="Server-Sent Events stream with incremental response chunks / 増分レスポンスチャンクを含むServer-Sent Eventsストリーム",
     responses={
         200: {
@@ -356,29 +360,42 @@ async def stream_query(
     - **filters**: Optional metadata filters / オプションのメタデータフィルター
     - **max_tokens**: Maximum tokens to generate (100-4096, default: 2048) / 生成する最大トークン数 (100-4096, デフォルト: 2048)
 
+    The endpoint is mounted at ``POST /api/v1/query/stream`` and accepts a
+    JSON request body. It is not a GET endpoint, so browser clients should use
+    ``fetch`` rather than ``EventSource``.
+
     ## Client Integration Example / クライアント統合例
 
     ### JavaScript/TypeScript:
     ```javascript
-    const eventSource = new EventSource('/query/stream?' + new URLSearchParams({
-        query: 'What is RAG?',
-        top_k: 5,
-        use_hybrid: true
-    }));
+    const response = await fetch('/api/v1/query/stream', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            query: 'What is RAG?',
+            top_k: 5,
+            use_hybrid: true
+        })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let fullResponse = '';
-    eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.content) {
-            fullResponse += data.content;
-            console.log('Chunk:', data.content);
+    let buffer = '';
+    while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buffer += value;
+        const events = buffer.split('\n\n');
+        buffer = events.pop();
+        for (const event of events) {
+            const line = event.split('\n').find((item) => item.startsWith('data: '));
+            if (!line) continue;
+            const data = JSON.parse(line.slice(6));
+            if (data.content) fullResponse += data.content;
+            if (data.is_done) console.log('Complete:', fullResponse, data.sources);
         }
-        if (data.is_done) {
-            console.log('Complete:', fullResponse);
-            console.log('Sources:', data.sources);
-            eventSource.close();
-        }
-    };
+    }
     ```
 
     ### Python:
@@ -386,11 +403,12 @@ async def stream_query(
     import requests
     import json
 
-    response = requests.get(
-        'http://localhost:8000/query/stream',
-        params={'query': 'What is RAG?', 'top_k': 5},
+    response = requests.post(
+        'http://localhost:8000/api/v1/query/stream',
+        json={'query': 'What is RAG?', 'top_k': 5},
         stream=True
     )
+    response.raise_for_status()
 
     full_response = ''
     for line in response.iter_lines():

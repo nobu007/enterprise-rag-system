@@ -81,14 +81,6 @@
 - Linked: CFLT-DOCS-001 / term Document / INV-IF-001 是正
 - Revert Triggers: documents ルータの登録を削除、または documents.py を削除
 
-### AUTO:QueryApiPath.path_contract:versioned_prefix
-- Status: ACTIVE
-- Chosen: クエリAPI実パスは /api/v1/query/{,batch,stream}。mappings.yml の '/query' 表記は論理パス簡略表現として許容。
-- Policy: code_is_truth(実際のマウントパス) + 表現簡略化の許容
-- Expires After Runs: 20
-- Linked: CFLT-APIPATH-001 / term QueryRequest
-- Revert Triggers: README curl 例のパス修正、またはマウント prefix 変更
-
 ## 2026-07-27 maintenance (cycle 7 / 実テスト実行で発見した schema drift)
 
 ### AUTO:RetrievalResult.dataclass_field_contract:code_is_truth_tests_stale

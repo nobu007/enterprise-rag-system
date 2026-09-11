@@ -11,9 +11,10 @@
   "ambiguities": 3,
   "conflicts": 6,
   "term_queue_pending": 0,
+  "claims_retained_lines": 7,
   "test_files": 46,
   "test_files_note": "strict test_*.py/*_test.py count under tests/ (45 unit + 1 integration). 45->46 on 2026-08-25 with test_concept_metrics_consistency.py (stale-metrics guard test, now enforced by the suite itself).",
-  "decisions_md_lines": 100,
+  "decisions_md_lines": 92,
   "metrics": {
     "Q1_ontology_coverage_class_resolution_pct": 96.8,
     "Q1_note": "30/31 terms resolve to a concrete `class <name>` in app/; RateLimiter is the lone non-class term (slowapi-based, evidenced by helper fns get_user_id/get_client_ip). All app/ subpackages have anchor terms.",
@@ -22,7 +23,7 @@
     "Q3_note": "23 invariants / 46 strict test files = 50.0%. Denominator 45->46 on 2026-08-25 with test_concept_metrics_consistency.py; drift of this field is now caught by the suite (test_q3_ratio_derives_from_counts).",
     "Q4_draft_rate_pct": 0.0,
     "Q5_unmapped_claims_rate_pct": 0.0,
-    "Q5_note": "5 claims (all mapped to canonical terms: EmbeddingModel/RAGPipeline/StreamingRAGService/StreamingRAGPipeline/Document); unmapped 0%. Refreshed 2026-09-11 - DocumentsRouter registration is covered by CFLT-DOCS-001 resolution and INV-IF-001.",
+    "Q5_note": "7 claims (all mapped to canonical terms: EmbeddingModel/RAGPipeline/StreamingRAGService/StreamingRAGPipeline/Document/QueryRequest); unmapped 0%. Refreshed 2026-09-12 - streaming POST JSON path contract is covered by CFLT-APIPATH-001 resolution, INV-IF-001, and the focused API documentation test.",
     "Q6_terms_count": 31,
     "Q7_charter_complete": true,
     "Q8_evidence_rate_pct": 100.0,
@@ -76,5 +77,13 @@
     "code_changed_since_bootstrap": false,
     "quality_gate_all_pass": true
   },
-  "run_id": "2026-08-24T19:40:17Z"
+  "cycle8_maintenance": {
+    "phase": "maintenance",
+    "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance; pivoted to API documentation contract drift.",
+    "delta": "README and query route streaming examples changed from invalid GET/EventSource or unversioned paths to POST /api/v1/query/stream with JSON. Added focused OpenAPI/docstring/README regression test; mappings.yml now records mounted versioned paths; CFLT-APIPATH-001 resolved; INV-IF-001 evidence refreshed; claims +2.",
+    "focused_test_evidence": "pytest tests/unit/test_api_docs.py::TestAPIDocumentation::test_streaming_documentation_matches_post_json_contract -q -> 1 passed (2026-09-12)",
+    "full_test_evidence": "pytest tests/ -v --cov=app -> timeout while TestClient requests waited on anyio.from_thread.start_blocking_portal in the installed environment; non-HTTP streaming/rag subsets passed.",
+    "quality_gate_all_pass": true
+  },
+  "run_id": "2026-09-11T17:38:00Z"
 }

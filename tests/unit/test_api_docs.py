@@ -294,6 +294,13 @@ class TestAPIDocumentation:
         cache_stats_path = schema["paths"].get("/cache/stats")
         assert cache_stats_path is not None, "Cache stats endpoint not found"
 
+    def test_readme_health_examples_match_mounted_routes(self):
+        """Do not document the unmounted database health endpoint."""
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        assert "http://localhost:8000/health/detailed" in readme
+        assert "http://localhost:8000/health/db" not in readme
+
     def test_error_response_models_defined(self, client):
         """Test that error response models are defined / エラーレスポンスモデルが定義されていることをテスト"""
         response = client.get("/openapi.json")

@@ -911,18 +911,23 @@ async with pool.acquire() as conn:
 
 #### Health Check
 
-Monitor database pool health via the API:
+The public API exposes service health through `/health/detailed`. The
+database pool's `health_check()` method is internal and is not mounted as a
+separate `/health/db` endpoint.
 
 ```bash
-# Check pool status
-curl http://localhost:8000/health/db
+# Check service status
+curl http://localhost:8000/health/detailed
 
 # Example response:
 {
   "status": "healthy",
-  "pool_size": 10,
-  "max_size": 50,
-  "available_connections": 8
+  "version": "1.0.0",
+  "services": {
+    "api": "healthy",
+    "vector_db": "healthy",
+    "llm": "healthy"
+  }
 }
 ```
 

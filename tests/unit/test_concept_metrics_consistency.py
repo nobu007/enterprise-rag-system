@@ -215,3 +215,22 @@ class TestMappingCoverage:
     def test_mappings_keys_match_terms(self):
         mappings = _load_yaml("mappings.yml")["mappings"]
         assert set(mappings) == set(_terms())
+
+
+class TestCiWorkflow:
+    """The CI test job must propagate pytest failures."""
+
+    def test_pytest_step_does_not_mask_failures(self):
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github" / "workflows" / "test.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        test_step = next(
+            step
+            for step in workflow["jobs"]["test"]["steps"]
+            if step.get("name") == "Run tests"
+        )
+
+        assert test_step["run"] == "pytest tests/ -v --cov=app"
+        assert "continue-on-error" not in test_step

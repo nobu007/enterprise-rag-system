@@ -20,14 +20,12 @@ conflicts:
     severity: "medium"
     nli: "contradiction"
     items:
-      - claim: "README は Document Relationship Graph(NetworkX) を完成機能として説明し、API エンドポイント(/api/v1/relationships/*)・関係タイプ・経路探索・中心性・クラスタリング・エクスポートまで詳細に記載"
-        source: "doc:README.md#L81 ('Document Relationship Graph for building and querying document relationships') / doc:README.md#L920-L940 (節「Document Relationship Graph」, curl 例 POST /api/v1/relationships/documents)"
-      - claim: "app/ 内に NetworkX import・relationship 関連コード・API route は一切存在せず、requirements.txt にも networkx は無い"
-        source: "code:app/ (grep networkx/relationship -> 0 件) / code:app/api/routes/ (documents.py, health.py, ingest.py, query.py のみ。relationships route 無し) / dep:requirements.txt (networkx 欠落)"
-    status: "open"
-    active_workaround:
-      decision_key: "AUTO:DocumentRelationshipGraph.feature_existence:unimplemented"
-      summary: "コード実装を正とし、Document Relationship Graph は未実装(README のみの構想)と扱う。概念辞書に term を追加しない(実装根拠がないため Rule 1/4)。README の記述と実装の乖離は本矛盾に記録し、解決は機能実装または README 修正に委ねる（概念整備のスコープ外）。"
+      - claim: "README は Document Relationship Graph を計画中の機能として説明し、relationship endpoints は未提供と明記する"
+        source: "doc:README.md#L81 ('planned; relationship endpoints are not available yet') / doc:README.md#L1097-L1102 (placeholder router と未実装を明記)"
+      - claim: "app/ 内に NetworkX import や relationship graph の実装はなく、relationships.py は空の placeholder router のみ。requirements.txt にも networkx は無い"
+        source: "code:app/api/routes/relationships.py (router = APIRouter() のみ) / code:app/ (NetworkX import なし) / dep:requirements.txt (networkx 欠落)"
+    status: "resolved"
+    resolution: "解決済 (2026-09-12): README の機能説明と API 例を削除し、relationship graph は計画中、/api/v1/relationships router は placeholder で未提供と同期。tests/unit/test_api_docs.py の回帰テストで README と OpenAPI に未実装 endpoint を再掲載しないことを検証する。"
 
   - id: "CFLT-AUDIT-001"
     term: "Tenant"

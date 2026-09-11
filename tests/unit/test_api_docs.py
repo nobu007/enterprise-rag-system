@@ -213,6 +213,24 @@ class TestAPIDocumentation:
             for description in document_descriptions
         )
 
+    def test_relationship_documentation_matches_placeholder_router(self):
+        """Do not advertise endpoints that the placeholder router does not expose."""
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        section_marker = "### Document Relationship Graph"
+        section_end = "## 🧪 Testing"
+
+        assert section_marker in readme
+        relationship_section = readme.split(section_marker, 1)[1]
+        assert section_end in relationship_section
+        relationship_section = relationship_section.split(section_end, 1)[0]
+
+        assert "placeholder" in relationship_section.lower()
+        assert "/api/v1/relationships/" not in relationship_section
+        assert not any(
+            path.startswith("/api/v1/relationships/")
+            for path in app.openapi()["paths"]
+        )
+
     def test_health_endpoint_documentation(self, client):
         """Test health endpoints have documentation / ヘルスエンドポイントがドキュメントを持っていることをテスト"""
         response = client.get("/openapi.json")

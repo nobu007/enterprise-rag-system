@@ -55,7 +55,6 @@ def _make_mock_embedding_model():
 def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
 
@@ -63,7 +62,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
-    embedding_model = get_embedding_model()
+    embedding_model = _make_mock_embedding_model()
 
     retriever = HybridRetriever(
         vector_db=vector_db,
@@ -184,13 +183,12 @@ async def test_batch_query():
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
 
-    embedding_model = get_embedding_model()
+    embedding_model = _make_mock_embedding_model()
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever, llm_client=AsyncMock())
 
@@ -241,13 +239,11 @@ def test_confidence_calculation():
     from app.services.retrieval import RetrievalResult
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
-
     from app.services.retrieval import HybridRetriever
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
-    embedding_model = get_embedding_model()
+    embedding_model = _make_mock_embedding_model()
 
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever, llm_client=AsyncMock())

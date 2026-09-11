@@ -18,7 +18,7 @@
 **タスク:**
 - [ ] `pytest` の設定ファイル (`pytest.ini`) を作成する
 - [x] `app/services/rag_pipeline.py` の単体テストを作成する — 2026-09-12: `batch_query` の個別失敗時エラー応答と、失敗後も後続質問を処理する継続性を回帰テストで検証
-- [ ] `app/api/routes/query.py` のAPIテストを作成する
+- [x] `app/api/routes/query.py` のAPIテストを作成する — 2026-09-12: production mount `/api/v1/query/` の成功応答を回帰テストで検証
 - [x] テスト実行用のドキュメントを更新する — 2026-09-12: `pytest tests/ -v --cov=app`（TestClient は uvloop backend）→ 900 passed, 1 warning, 86% coverage
 
 ---

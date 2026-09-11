@@ -57,10 +57,13 @@ def client(mock_rag_pipeline, sample_rag_response):
     mock_rag_pipeline.query.return_value = sample_rag_response
     mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
 
-    # Override the dependency
-    app.dependency_overrides[get_rag_pipeline] = lambda: mock_rag_pipeline
+    async def provide_pipeline():
+        return mock_rag_pipeline
 
-    yield TestClient(app)
+    # Override the dependency
+    app.dependency_overrides[get_rag_pipeline] = provide_pipeline
+
+    yield TestClient(app, backend_options={"use_uvloop": True})
 
     # Clean up
     app.dependency_overrides = {}
@@ -179,6 +182,42 @@ class TestQueryEndpoint:
             filter_dict=None,
             rerank=True,
             collection='default'
+        )
+
+    def test_query_endpoint_works_at_production_prefix(
+        self, mock_rag_pipeline, sample_rag_response
+    ):
+        """Verify the mounted application exposes the documented query path."""
+        from fastapi import FastAPI
+
+        mock_rag_pipeline.query.return_value = sample_rag_response
+        mounted_app = FastAPI()
+        mounted_app.include_router(router, prefix="/api/v1")
+
+        async def provide_pipeline():
+            return mock_rag_pipeline
+
+        mounted_app.dependency_overrides[get_rag_pipeline] = provide_pipeline
+
+        try:
+            response = TestClient(
+                mounted_app, backend_options={"use_uvloop": True}
+            ).post(
+                "/api/v1/query/",
+                json={"query": "What is machine learning?", "top_k": 5},
+            )
+        finally:
+            mounted_app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        assert response.json()["answer"] == sample_rag_response.answer
+        mock_rag_pipeline.query.assert_called_once_with(
+            question="What is machine learning?",
+            top_k=5,
+            use_hybrid=True,
+            filter_dict=None,
+            rerank=True,
+            collection="default",
         )
 
     def test_query_endpoint_with_filters(self, client, mock_rag_pipeline, sample_rag_response):

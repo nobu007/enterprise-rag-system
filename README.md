@@ -1247,7 +1247,7 @@ The multi-tenant system consists of three main components:
 #### Using Tenant ID Header
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/query" \
+curl -X POST "http://localhost:8000/api/v1/query/" \
   -H "Content-Type: application/json" \
   -H "X-Tenant-ID: acme-corp" \
   -d '{
@@ -1260,7 +1260,7 @@ curl -X POST "http://localhost:8000/api/v1/query" \
 #### Using API Key (Recommended)
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/query" \
+curl -X POST "http://localhost:8000/api/v1/query/" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: rag_abcd1234..." \
   -d '{

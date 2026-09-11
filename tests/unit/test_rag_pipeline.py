@@ -299,6 +299,40 @@ async def test_rag_pipeline_batch_query(mock_openai_client, mock_retriever, samp
     assert len(responses) == 3
 
 
+@pytest.mark.asyncio
+async def test_rag_pipeline_batch_query_returns_error_response_for_failed_question(
+    mock_openai_client, mock_retriever
+):
+    """A single failed question should not abort the rest of a batch."""
+    pipeline = RAGPipeline(
+        retriever=mock_retriever,
+        llm_client=mock_openai_client,
+        llm_model='gpt-4'
+    )
+    pipeline.query = AsyncMock(side_effect=[
+        RAGResponse(
+            answer="first answer",
+            sources=[],
+            confidence=1.0,
+            latency_ms=1,
+            tokens_used=1,
+            retrieval_results=[]
+        ),
+        RuntimeError("retrieval unavailable")
+    ])
+
+    responses = await pipeline.batch_query(["working question", "failed question"])
+
+    assert len(responses) == 2
+    assert responses[0].answer == "first answer"
+    assert responses[1].answer == "Error: retrieval unavailable"
+    assert responses[1].sources == []
+    assert responses[1].confidence == 0.0
+    assert responses[1].latency_ms == 0
+    assert responses[1].tokens_used == 0
+    assert responses[1].retrieval_results == []
+
+
 def test_confidence_calculation(mock_retriever, mock_openai_client, sample_retrieval_results):
     """Test confidence score calculation"""
     pipeline = RAGPipeline(

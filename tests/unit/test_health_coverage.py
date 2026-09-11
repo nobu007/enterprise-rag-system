@@ -37,7 +37,7 @@ class TestCacheStatsEndpoint:
         try:
             if hasattr(app.state, "cache_manager"):
                 del app.state.cache_manager
-            client = TestClient(app)
+            client = TestClient(app, backend_options={"use_uvloop": True})
             resp = client.get("/cache/stats")
         finally:
             self._restore(prior)
@@ -60,7 +60,7 @@ class TestCacheStatsEndpoint:
             cache = Mock()
             cache.get_stats.return_value = stats
             app.state.cache_manager = cache
-            client = TestClient(app)
+            client = TestClient(app, backend_options={"use_uvloop": True})
             resp = client.get("/cache/stats")
         finally:
             self._restore(prior)
@@ -74,7 +74,7 @@ class TestCacheStatsEndpoint:
         prior = self._restore_setup()
         try:
             app.state.cache_manager = None
-            client = TestClient(app)
+            client = TestClient(app, backend_options={"use_uvloop": True})
             resp = client.get("/cache/stats")
         finally:
             self._restore(prior)
@@ -87,7 +87,7 @@ class TestDetailedHealthEndpoint:
     """Cover /health/detailed response body (health.py L81-89)."""
 
     def test_detailed_health_returns_services(self):
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.get("/health/detailed")
 
         assert resp.status_code == 200

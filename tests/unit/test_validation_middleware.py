@@ -218,7 +218,11 @@ class TestValidationMiddleware:
         app.state.openai_client = AsyncMock()
         app.state.cache_manager = MagicMock()
         app.state.rag_pipeline = MagicMock()
-        return TestClient(app, raise_server_exceptions=False)
+        return TestClient(
+            app,
+            raise_server_exceptions=False,
+            backend_options={"use_uvloop": True},
+        )
 
     def test_request_size_limit_success(self, client):
         """Test normal request within size limit"""
@@ -481,7 +485,11 @@ class TestIntegration:
         app.state.openai_client = AsyncMock()
         app.state.cache_manager = MagicMock()
         app.state.rag_pipeline = MagicMock()
-        return TestClient(app, raise_server_exceptions=False)
+        return TestClient(
+            app,
+            raise_server_exceptions=False,
+            backend_options={"use_uvloop": True},
+        )
 
     def test_full_security_stack(self, client):
         """Test that all security features work together"""
@@ -538,7 +546,7 @@ class TestValidationMiddlewareIsolated:
             Route("/", endpoint, methods=["GET", "POST", "PUT", "PATCH"]),
         ])
         application.add_middleware(ValidationMiddleware, **middleware_kwargs)
-        return TestClient(application)
+        return TestClient(application, backend_options={"use_uvloop": True})
 
     @staticmethod
     def _make_middleware(**kwargs) -> ValidationMiddleware:

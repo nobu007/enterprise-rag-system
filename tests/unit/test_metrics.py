@@ -236,4 +236,4 @@ class TestMetricsEndpoint:
 @pytest.fixture
 def client():
     """Create test client"""
-    return TestClient(app)
+    return TestClient(app, backend_options={"use_uvloop": True})

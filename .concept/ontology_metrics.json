@@ -94,5 +94,13 @@
     "full_test_evidence": "Full pytest tests/ -q --cov=app collected 905 and timed out at the existing synchronous TestClient/AnyIO portal path (exit 124); direct AsyncClient/ASGITransport probe returned /openapi.json 200.",
     "quality_gate_all_pass": true
   },
-  "run_id": "20260911-224125-879455"
+  "cycle10_maintenance": {
+    "phase": "maintenance",
+    "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance; NEW angle: production-prefix API regression and full-suite TestClient execution.",
+    "delta": "Replaced the synthetic production-prefix API test with the real app.main.app, asserted no redirect, and explicitly closed the client. Aligned existing HTTP tests with the installed uvloop-backed TestClient path so the configured suite can complete. Ontology, invariants, mappings, and claims were unchanged.",
+    "focused_test_evidence": "pytest tests/unit/test_api_routes.py tests/unit/test_api_docs.py -q -> 52 passed (2026-09-12).",
+    "full_test_evidence": "pytest tests/ -v --cov=app -> 906 passed; pytest tests/ -q --cov=app --cov-report=term-missing -> 906 passed in 48.55s, TOTAL 86% (2026-09-12).",
+    "quality_gate_all_pass": true
+  },
+  "run_id": "20260911-231816-613795"
 }

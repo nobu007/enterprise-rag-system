@@ -67,7 +67,7 @@ class TestRequestIDMiddleware:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(app, backend_options={"use_uvloop": True})
 
     def test_request_id_generated_when_not_provided(self, client):
         """Test that request ID is generated when not provided in header."""
@@ -191,7 +191,7 @@ class TestRequestIDLoggingIntegration:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(app, backend_options={"use_uvloop": True})
 
     def test_request_id_in_logs(self, client):
         """Test that request ID appears in logs during request processing."""
@@ -248,7 +248,7 @@ class TestRequestIDMiddlewareEdgeCases:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(app, backend_options={"use_uvloop": True})
 
     def test_empty_string_request_id(self, client):
         """Test with empty string request ID."""
@@ -319,7 +319,7 @@ class TestRequestIDMiddlewareConcurrency:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(app, backend_options={"use_uvloop": True})
 
     def test_multiple_concurrent_requests(self, client):
         """Test that multiple concurrent requests get different IDs."""
@@ -360,7 +360,7 @@ class TestRequestIDMiddlewareIntegration:
     @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(app, backend_options={"use_uvloop": True})
 
     def test_request_id_with_cors_headers(self, client):
         """Test that request ID works alongside CORS headers."""

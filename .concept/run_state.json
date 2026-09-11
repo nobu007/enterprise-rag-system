@@ -1,9 +1,9 @@
 {
-  "run_index": 9,
-  "last_run_id": "20260911-224125-879455",
+  "run_index": 10,
+  "last_run_id": "20260911-231816-613795",
   "phase": "maintenance",
-  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance phase. NEW verification angle: README test-suite command accuracy and supported integration coverage.",
-  "previous_phase": "maintenance (cycle 8 API documentation contract drift)",
+  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance phase. NEW verification angle: production-prefix API regression and full-suite TestClient execution.",
+  "previous_phase": "maintenance (cycle 9 README test-suite contract)",
   "cycle1_delta": "conflicts.yml +2 conflicts (Weaviate, Document Relationship Graph) resolving D-BOOT-005",
   "cycle2_delta": "exhaustive README Features verification: +CFLT-AUDIT-001 (audit logging), +AMB-003 (auth/authorization partial). D-BOOT-005 verification complete (all 13 README features checked).",
   "cycle3_delta": "raised Q3 53.6%->71.4% via +5 test-grounded invariants (INV-RES-003/INV-CACHE-002/INV-CACHE-003/INV-CORE-002/INV-RES-004). invariants 15->20.",
@@ -17,5 +17,7 @@
   "cycle8_test_run_evidence": "pytest tests/unit/test_api_docs.py::TestAPIDocumentation::test_streaming_documentation_matches_post_json_contract -q -> 1 passed (2026-09-12). Full pytest timed out in existing synchronous TestClient/AnyIO portal path; streaming/rag subsets passed.",
   "cycle9_delta": "README testing instructions removed the nonexistent pytest tests/e2e command and documented that end-to-end pipeline coverage lives under tests/integration/. Added a regression test that checks the documented suites and their directories. No ontology, invariant, mapping, or claim-count changes.",
   "cycle9_test_run_evidence": "Focused README/API-doc contract tests + concept consistency: 20 passed (2026-09-12). Non-HTTP integration/RAG/retrieval/streaming/concept subset: 59 passed with 18% subset coverage. Full pytest tests/ -q --cov=app collected 905 and timed out at the existing synchronous TestClient/AnyIO portal path (exit 124); direct AsyncClient/ASGITransport probe returned /openapi.json 200.",
+  "cycle10_delta": "Replaced the synthetic production-prefix API test with the real app.main.app, asserted no redirect, and explicitly closed the client. Aligned existing HTTP tests with the installed uvloop-backed TestClient path so the configured suite can complete. No ontology, invariant, mapping, or claim-count changes.",
+  "cycle10_test_run_evidence": "API routes/docs: 52 passed. Full pytest tests/ -v --cov=app: 906 passed. Full pytest tests/ -q --cov=app --cov-report=term-missing: 906 passed in 48.55s, TOTAL 86% (2026-09-12).",
   "created_at_note": "bootstrap; timestamp injected post-workflow per spec (no Date.now in scripts)"
 }

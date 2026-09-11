@@ -133,7 +133,7 @@ class TestStreamQueryHappyPath:
 
     def test_stream_returns_sse_with_content(self, app_with_overrides):
         app, pipeline, llm = app_with_overrides
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 200
@@ -163,7 +163,7 @@ class TestStreamRetrieveSyncContract:
 
     def test_retrieve_called_without_await(self, app_with_overrides):
         app, pipeline, llm = app_with_overrides
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 200
@@ -195,7 +195,7 @@ class TestStreamQueryRerankBranch:
         reranker.rerank_results = _rerank_results
         pipeline.reranker = reranker
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={
             "query": "What is RAG?",
             "rerank": True,
@@ -235,7 +235,7 @@ class TestStreamRetrieveOverfetchContract:
         pipeline.reranker = reranker
         pipeline.retriever.retrieve = Mock(return_value=[_retrieval_result()])
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         # Request top_k=5 with rerank=True -> retrieve must widen to 50.
         resp = client.post("/query/stream", json={
             "query": "What is RAG?", "top_k": 5, "rerank": True,
@@ -253,7 +253,7 @@ class TestStreamRetrieveOverfetchContract:
         pipeline.reranker = Mock()  # present, but the client opts out of rerank
         pipeline.retriever.retrieve = Mock(return_value=[_retrieval_result()])
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={
             "query": "What is RAG?", "top_k": 5, "rerank": False,
         })
@@ -268,7 +268,7 @@ class TestStreamRetrieveOverfetchContract:
         # pipeline.reranker is None by default; rerank=True but nothing to rerank with.
         pipeline.retriever.retrieve = Mock(return_value=[_retrieval_result()])
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={
             "query": "What is RAG?", "top_k": 5, "rerank": True,
         })
@@ -300,7 +300,7 @@ class TestStreamEmptyRetrievalGuard:
         # Retrieval finds nothing.
         pipeline.retriever.retrieve = Mock(return_value=[])
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "obscure query"})
 
         assert resp.status_code == 200
@@ -340,7 +340,7 @@ class TestStreamNoUsageChunkFallback:
             side_effect=lambda *a, **k: _llm_stream_no_usage()
         )
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 200
@@ -381,7 +381,7 @@ class TestStreamTemperatureConfigContract:
         # Simulate an operator setting LLM_TEMPERATURE=0 for determinism.
         pipeline.temperature = 0.0
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 200
@@ -403,7 +403,7 @@ class TestStreamQueryErrorHandlers:
 
     def test_stream_returns_400_on_invalid_query(self, app_with_overrides):
         app, pipeline, llm = app_with_overrides
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         # Whitespace-only query passes pydantic min_length=1 but is rejected
         # by StreamingRAGService.validate_stream_request -> ValueError -> 400.
         resp = client.post("/query/stream", json={"query": "   "})
@@ -421,7 +421,7 @@ class TestStreamQueryErrorHandlers:
 
         monkeypatch.setattr(StreamingRAGService, "validate_stream_request", _raise)
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 500
@@ -433,7 +433,7 @@ class TestStreamQueryErrorHandlers:
         # SSE chunk (status stays 200 because StreamingResponse is returned).
         pipeline.retriever.retrieve = Mock(side_effect=RuntimeError("retrieve down"))
 
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 200
@@ -453,7 +453,7 @@ class TestStreamQueryErrorHandlers:
         monkeypatch.setattr(query_module, "format_sse_stream", _boom)
 
         app, pipeline, llm = app_with_overrides
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 200
@@ -486,7 +486,7 @@ class TestStreamQueryErrorHandlers:
         monkeypatch.setattr(query_module, "format_sse_stream", _boom)
 
         app, pipeline, llm = app_with_overrides
-        client = TestClient(app)
+        client = TestClient(app, backend_options={"use_uvloop": True})
         resp = client.post("/query/stream", json={"query": "What is RAG?"})
 
         assert resp.status_code == 200

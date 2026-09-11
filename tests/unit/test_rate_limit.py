@@ -39,7 +39,7 @@ class TestRateLimitingEndpoints:
     @pytest.fixture
     def client(self):
         """Create test client"""
-        return TestClient(app)
+        return TestClient(app, backend_options={"use_uvloop": True})
 
     def test_query_endpoint_allows_requests(self, client):
         """Test that query endpoint allows requests within limit"""
@@ -128,7 +128,7 @@ class TestRateLimitErrorHandling:
     @pytest.fixture
     def client(self):
         """Create test client"""
-        return TestClient(app)
+        return TestClient(app, backend_options={"use_uvloop": True})
 
     def test_rate_limit_error_response_format(self, client):
         """Test that rate limit errors return proper format"""

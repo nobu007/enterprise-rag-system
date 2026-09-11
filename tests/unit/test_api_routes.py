@@ -10,6 +10,7 @@ from unittest.mock import Mock, AsyncMock
 from fastapi.testclient import TestClient
 
 from app.api.routes.query import router, QueryRequest, QueryResponse
+from app.main import app as production_app
 from app.services.rag_pipeline import RAGResponse
 from app.api.dependencies import get_rag_pipeline
 
@@ -187,29 +188,34 @@ class TestQueryEndpoint:
     def test_query_endpoint_works_at_production_prefix(
         self, mock_rag_pipeline, sample_rag_response
     ):
-        """Verify the mounted application exposes the documented query path."""
-        from fastapi import FastAPI
-
+        """Verify the production application exposes the documented query path."""
         mock_rag_pipeline.query.return_value = sample_rag_response
-        mounted_app = FastAPI()
-        mounted_app.include_router(router, prefix="/api/v1")
 
         async def provide_pipeline():
             return mock_rag_pipeline
 
-        mounted_app.dependency_overrides[get_rag_pipeline] = provide_pipeline
+        previous_override = production_app.dependency_overrides.get(get_rag_pipeline)
+        production_app.dependency_overrides[get_rag_pipeline] = provide_pipeline
+        client = TestClient(
+            production_app,
+            backend_options={"use_uvloop": True},
+            follow_redirects=False,
+        )
 
         try:
-            response = TestClient(
-                mounted_app, backend_options={"use_uvloop": True}
-            ).post(
+            response = client.post(
                 "/api/v1/query/",
                 json={"query": "What is machine learning?", "top_k": 5},
             )
         finally:
-            mounted_app.dependency_overrides.clear()
+            client.close()
+            if previous_override is None:
+                production_app.dependency_overrides.pop(get_rag_pipeline, None)
+            else:
+                production_app.dependency_overrides[get_rag_pipeline] = previous_override
 
         assert response.status_code == 200
+        assert response.history == []
         assert response.json()["answer"] == sample_rag_response.answer
         mock_rag_pipeline.query.assert_called_once_with(
             question="What is machine learning?",

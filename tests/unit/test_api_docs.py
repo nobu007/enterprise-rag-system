@@ -30,7 +30,15 @@ def client():
     app.state.openai_client = AsyncMock()
     app.state.cache_manager = MagicMock()
     app.state.rag_pipeline = MagicMock()
-    return TestClient(app, raise_server_exceptions=False)
+    client = TestClient(
+        app,
+        raise_server_exceptions=False,
+        backend_options={"use_uvloop": True},
+    )
+    try:
+        yield client
+    finally:
+        client.close()
 
 
 class TestAPIDocumentation:

@@ -55,7 +55,7 @@ def client(pipeline):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_rag_pipeline] = lambda: pipeline
-    yield TestClient(app)
+    yield TestClient(app, backend_options={"use_uvloop": True})
     app.dependency_overrides = {}
 
 

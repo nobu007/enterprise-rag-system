@@ -17,6 +17,10 @@ from app.api.routes.query import router, stream_query
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+RELATIONSHIP_API_PREFIX = "/api/v1/relationships"
+RELATIONSHIP_API_PATH = re.compile(
+    rf"{re.escape(RELATIONSHIP_API_PREFIX)}(?:/[^\s`\"')]+)?"
+)
 
 
 @pytest.fixture
@@ -216,20 +220,42 @@ class TestAPIDocumentation:
     def test_relationship_documentation_matches_placeholder_router(self):
         """Do not advertise endpoints that the placeholder router does not expose."""
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        section_marker = "### Document Relationship Graph"
-        section_end = "## 🧪 Testing"
-
-        assert section_marker in readme
-        relationship_section = readme.split(section_marker, 1)[1]
-        assert section_end in relationship_section
-        relationship_section = relationship_section.split(section_end, 1)[0]
-
-        assert "placeholder" in relationship_section.lower()
-        assert "/api/v1/relationships/" not in relationship_section
-        assert not any(
-            path.startswith("/api/v1/relationships/")
-            for path in app.openapi()["paths"]
+        feature_line = next(
+            (
+                line
+                for line in readme.splitlines()
+                if "Document Relationship Graph" in line
+            ),
+            None,
         )
+
+        assert feature_line is not None
+        assert "planned" in feature_line.lower()
+        assert "not available" in feature_line.lower()
+
+        relationship_paths = [
+            path
+            for path in app.openapi()["paths"]
+            if path == RELATIONSHIP_API_PREFIX
+            or path.startswith(f"{RELATIONSHIP_API_PREFIX}/")
+        ]
+        assert relationship_paths == []
+
+        documentation_files = sorted(
+            path
+            for path in REPO_ROOT.rglob("*.md")
+            if ".git" not in path.parts
+        )
+        documented_paths = [
+            (path, match)
+            for path in documentation_files
+            for match in RELATIONSHIP_API_PATH.findall(
+                path.read_text(encoding="utf-8")
+            )
+        ]
+        assert all(
+            match == RELATIONSHIP_API_PREFIX for _, match in documented_paths
+        ), documented_paths
 
     def test_health_endpoint_documentation(self, client):
         """Test health endpoints have documentation / ヘルスエンドポイントがドキュメントを持っていることをテスト"""

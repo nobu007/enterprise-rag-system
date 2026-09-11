@@ -1,9 +1,9 @@
 {
-  "run_index": 8,
-  "last_run_id": "concept-maintenance-cycle8",
+  "run_index": 9,
+  "last_run_id": "20260911-224125-879455",
   "phase": "maintenance",
-  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance phase. NEW verification angle: API documentation and mounted POST JSON streaming path contract.",
-  "previous_phase": "maintenance (cycle 7 test execution and schema-drift discovery)",
+  "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance phase. NEW verification angle: README test-suite command accuracy and supported integration coverage.",
+  "previous_phase": "maintenance (cycle 8 API documentation contract drift)",
   "cycle1_delta": "conflicts.yml +2 conflicts (Weaviate, Document Relationship Graph) resolving D-BOOT-005",
   "cycle2_delta": "exhaustive README Features verification: +CFLT-AUDIT-001 (audit logging), +AMB-003 (auth/authorization partial). D-BOOT-005 verification complete (all 13 README features checked).",
   "cycle3_delta": "raised Q3 53.6%->71.4% via +5 test-grounded invariants (INV-RES-003/INV-CACHE-002/INV-CACHE-003/INV-CORE-002/INV-RES-004). invariants 15->20.",
@@ -15,5 +15,7 @@
   "cycle7_test_run_evidence": "pytest tests/integration/test_rag_integration.py::test_context_compression + ::test_confidence_calculation -> 2 FAILED, both 'TypeError: RetrievalResult.__init__() missing 1 required positional argument: source' at L152 and L248 (mise py3.13, 2026-07-27)",
   "cycle8_delta": "README and query route streaming examples synchronized to POST /api/v1/query/stream with JSON; focused OpenAPI/docstring/README contract test added and passed; mappings.yml updated to mounted paths; CFLT-APIPATH-001 resolved; INV-IF-001 evidence refreshed; claims +2.",
   "cycle8_test_run_evidence": "pytest tests/unit/test_api_docs.py::TestAPIDocumentation::test_streaming_documentation_matches_post_json_contract -q -> 1 passed (2026-09-12). Full pytest timed out in existing synchronous TestClient/AnyIO portal path; streaming/rag subsets passed.",
+  "cycle9_delta": "README testing instructions removed the nonexistent pytest tests/e2e command and documented that end-to-end pipeline coverage lives under tests/integration/. Added a regression test that checks the documented suites and their directories. No ontology, invariant, mapping, or claim-count changes.",
+  "cycle9_test_run_evidence": "Focused README/API-doc contract tests + concept consistency: 20 passed (2026-09-12). Non-HTTP integration/RAG/retrieval/streaming/concept subset: 59 passed with 18% subset coverage. Full pytest tests/ -q --cov=app collected 905 and timed out at the existing synchronous TestClient/AnyIO portal path (exit 124); direct AsyncClient/ASGITransport probe returned /openapi.json 200.",
   "created_at_note": "bootstrap; timestamp injected post-workflow per spec (no Date.now in scripts)"
 }

@@ -257,6 +257,18 @@ class TestAPIDocumentation:
             match == RELATIONSHIP_API_PREFIX for _, match in documented_paths
         ), documented_paths
 
+    def test_testing_documentation_matches_repository_layout(self):
+        """Keep README test commands aligned with the checked-in test suites."""
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        assert "pytest tests/unit" in readme
+        assert "pytest tests/integration" in readme
+        assert "pytest tests/e2e" not in readme
+        assert "no separate `tests/e2e/` suite" in readme
+        assert "under `tests/integration/`" in readme
+        assert (REPO_ROOT / "tests" / "unit").is_dir()
+        assert (REPO_ROOT / "tests" / "integration").is_dir()
+
     def test_health_endpoint_documentation(self, client):
         """Test health endpoints have documentation / ヘルスエンドポイントがドキュメントを持っていることをテスト"""
         response = client.get("/openapi.json")

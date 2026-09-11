@@ -1779,12 +1779,12 @@ pytest tests/unit
 # Run integration tests
 pytest tests/integration
 
-# Run end-to-end tests
-pytest tests/e2e
-
 # Generate coverage report
 pytest --cov=app tests/
 ```
+
+There is no separate `tests/e2e/` suite; end-to-end pipeline coverage lives
+under `tests/integration/`.
 
 ---
 

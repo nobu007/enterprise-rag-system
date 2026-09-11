@@ -85,5 +85,14 @@
     "full_test_evidence": "pytest tests/ -v --cov=app -> timeout while TestClient requests waited on anyio.from_thread.start_blocking_portal in the installed environment; non-HTTP streaming/rag subsets passed.",
     "quality_gate_all_pass": true
   },
-  "run_id": "2026-09-11T17:38:00Z"
+  "cycle9_maintenance": {
+    "phase": "maintenance",
+    "boot_decision": "Q1=YES,Q2=YES(31 terms),Q3=YES(>=5),Q4=all 8 quality criteria PASS -> maintenance; NEW angle: README test-suite command accuracy and supported integration coverage.",
+    "delta": "README testing instructions removed the nonexistent pytest tests/e2e command and documented that end-to-end pipeline coverage lives under tests/integration/. Added a regression test for the documented suites and directories. Ontology, invariants, mappings, and claims were unchanged.",
+    "focused_test_evidence": "README/API-doc contract tests plus concept consistency: 20 passed (2026-09-12).",
+    "subset_test_evidence": "Non-HTTP integration/RAG/retrieval/streaming/concept subset: 59 passed with 18% subset coverage (2026-09-12).",
+    "full_test_evidence": "Full pytest tests/ -q --cov=app collected 905 and timed out at the existing synchronous TestClient/AnyIO portal path (exit 124); direct AsyncClient/ASGITransport probe returned /openapi.json 200.",
+    "quality_gate_all_pass": true
+  },
+  "run_id": "20260911-224125-879455"
 }

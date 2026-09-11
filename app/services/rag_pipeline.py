@@ -55,8 +55,11 @@ class RAGPipeline:
         self.llm_model = llm_model or settings.llm_model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.compressor = ContextCompressor(max_tokens=4000)
         self.reranker = reranker
+        self.compressor = ContextCompressor(
+            max_tokens=4000,
+            reranker=reranker,
+        )
         self.cache = cache_manager
 
         # Initialize circuit breaker for LLM calls

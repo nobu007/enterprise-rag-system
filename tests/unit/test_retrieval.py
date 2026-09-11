@@ -186,8 +186,57 @@ class TestContextCompressor:
         context = compressor.compress("q", [])
         assert context == ""
 
-    def test_rerank_method_delegates(self, sample_retrieval_results):
-        """Test rerank method delegates to truncation (placeholder impl)."""
+    def test_rerank_method_uses_injected_reranker(
+        self, sample_retrieval_results
+    ):
+        """Test reranked results are ordered before context truncation."""
+        reranker = Mock()
+        reranker.rerank_results.return_value = list(
+            reversed(sample_retrieval_results)
+        )
+        compressor = ContextCompressor(max_tokens=4000, reranker=reranker)
+
+        context = compressor.compress(
+            "q", sample_retrieval_results, method="rerank"
+        )
+        assert (
+            context.index("Second document")
+            < context.index("First document")
+        )
+        reranker.rerank_results.assert_called_once_with(
+            query="q",
+            results=sample_retrieval_results,
+            top_k=None,
+        )
+
+    def test_rerank_method_without_reranker_preserves_order(
+        self, sample_retrieval_results
+    ):
+        """Test rerank mode remains safe when no reranker is configured."""
         compressor = ContextCompressor(max_tokens=4000)
-        context = compressor.compress("q", sample_retrieval_results, method="rerank")
-        assert len(context) > 0
+
+        context = compressor.compress(
+            "q", sample_retrieval_results, method="rerank"
+        )
+
+        assert (
+            context.index("First document")
+            < context.index("Second document")
+        )
+
+    def test_rerank_method_falls_back_on_error(
+        self, sample_retrieval_results
+    ):
+        """Test a reranker failure preserves the original context order."""
+        reranker = Mock()
+        reranker.rerank_results.side_effect = RuntimeError("model unavailable")
+        compressor = ContextCompressor(max_tokens=4000, reranker=reranker)
+
+        context = compressor.compress(
+            "q", sample_retrieval_results, method="rerank"
+        )
+
+        assert (
+            context.index("First document")
+            < context.index("Second document")
+        )

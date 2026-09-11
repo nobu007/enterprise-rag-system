@@ -4,12 +4,14 @@ Retrieval Service for RAG System
 This module implements hybrid search and retrieval logic.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from dataclasses import dataclass
 from app.core.vectordb import VectorDB, SearchResult
 from app.core.embeddings import EmbeddingModel
 from app.core.logging_config import get_logger
 from app.services.document_loader import Document
+if TYPE_CHECKING:
+    from app.services.reranker import Reranker
 
 
 logger = get_logger(__name__)
@@ -207,8 +209,13 @@ class HybridRetriever:
 class ContextCompressor:
     """Compress retrieved context to fit LLM context window"""
     
-    def __init__(self, max_tokens: int = 4000):
+    def __init__(
+        self,
+        max_tokens: int = 4000,
+        reranker: Optional["Reranker"] = None,
+    ):
         self.max_tokens = max_tokens
+        self.reranker = reranker
     
     def compress(
         self,
@@ -247,8 +254,22 @@ class ContextCompressor:
         
         return "\n---\n".join(context_parts)
     
-    def _rerank_and_truncate(self, query: str, results: List[RetrievalResult]) -> str:
-        """Re-rank results before truncation (placeholder for future implementation)"""
-        # For now, just use truncation
-        # TODO: Implement cross-encoder re-ranking
+    def _rerank_and_truncate(
+        self, query: str, results: List[RetrievalResult]
+    ) -> str:
+        """Re-rank results before truncation when a reranker is configured."""
+        if self.reranker is None:
+            return self._truncate_context(results)
+
+        try:
+            results = self.reranker.rerank_results(
+                query=query,
+                results=results,
+                top_k=None,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Context re-ranking failed; using original results: %s", exc
+            )
+
         return self._truncate_context(results)

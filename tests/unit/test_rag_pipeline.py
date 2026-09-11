@@ -359,6 +359,7 @@ async def test_rag_pipeline_with_reranker_enabled(mock_openai_client, mock_retri
 
     # Verify reranker was called
     mock_reranker.rerank_results.assert_called_once()
+    assert pipeline.compressor.reranker is mock_reranker
 
     # Verify retriever was called with top_k=50 (candidates for reranking)
     assert mock_retriever.retrieve.call_args[1]['top_k'] == 50

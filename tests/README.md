@@ -161,6 +161,10 @@ def test_rag_pipeline_initialization(mock_retriever):
 
 ### API Test Example
 
+The `test_api_routes.py` fixture mounts `query.router` directly, so its local
+test path is `/query/`. The production app mounts the router under `/api/v1`,
+so production requests use `/api/v1/query/`.
+
 ```python
 from fastapi.testclient import TestClient
 from unittest.mock import patch

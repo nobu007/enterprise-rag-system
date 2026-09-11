@@ -19,7 +19,7 @@
 - [ ] `pytest` の設定ファイル (`pytest.ini`) を作成する
 - [ ] `app/services/rag_pipeline.py` の単体テストを作成する
 - [ ] `app/api/routes/query.py` のAPIテストを作成する
-- [ ] テスト実行用のドキュメントを更新する
+- [x] テスト実行用のドキュメントを更新する — ✅ 2026-09-12 run
 
 ---
 

@@ -73,13 +73,13 @@
 
 ## 2026-07-02 maintenance (cycle 4 / app/main.py ルータ登録監査)
 
-### AUTO:DocumentsRouter.route_registration:unregistered_dead_code
-- Status: ACTIVE
-- Chosen: documents ルータ(documents.py#L20, 5 routes)は定義+エクスポート済みだが main.py で import/include されず到達不能。ライブAPI面は /query,/ingest,/health のみ。/documents/* はデッドコード。
+### AUTO:DocumentsRouter.route_registration:unregistered_dead_code (RESOLVED 2026-09-11)
+- Status: RESOLVED
+- Chosen: app/main.py が documents ルータを import し、`include_router(documents.router, prefix="/api/v1")` で登録する実装へ修正。OpenAPI の `/api/v1/documents/ingest` 回帰テストを追加。
 - Policy: code_is_truth(main.py の登録状態が正) + Rule 1/4
-- Expires After Runs: 20
+- Verification: app/main.py と documents.py の py_compile は通過。pytest は実行環境の fastapi が namespace package で FastAPI を提供しないため保留。
 - Linked: CFLT-DOCS-001 / term Document / INV-IF-001 是正
-- Revert Triggers: app/main.py に `include_router(documents.router, prefix=...)` 追加（実装）、または documents.py 削除
+- Revert Triggers: documents ルータの登録を削除、または documents.py を削除
 
 ### AUTO:QueryApiPath.path_contract:versioned_prefix
 - Status: ACTIVE
@@ -98,4 +98,3 @@
 - Expires After Runs: 20
 - Linked: CFLT-SCHEMA-001 / term RetrievalResult (TERM-CORE-007) / 阻害対象 MET-003 + MS-004 統合受入
 - Revert Triggers: 該当3テストサイトへ `source=` 引数追加（テスト修正）で TypeError 解消時、本決定と CFLT-SCHEMA-001 を解決済みへ
-

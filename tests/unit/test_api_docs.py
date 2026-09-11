@@ -100,6 +100,14 @@ class TestAPIDocumentation:
         response = client.get("/openapi.json")
         schema = response.json()
 
+        # The documents router must be mounted by the application, not only
+        # defined in app.api.routes.documents.
+        document_ingest_path = schema["paths"].get("/api/v1/documents/ingest")
+        assert document_ingest_path is not None, (
+            "Document ingest endpoint not found"
+        )
+        assert "post" in document_ingest_path
+
         # Check /ingest endpoint
         ingest_path = schema["paths"].get("/api/v1/ingest")
         assert ingest_path is not None, "Ingest endpoint not found"

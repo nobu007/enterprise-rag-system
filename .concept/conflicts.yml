@@ -54,10 +54,8 @@ conflicts:
         source: "code:app/api/routes/documents.py#L20 (router = APIRouter(prefix=\"/documents\", ...)) / code:app/api/routes/documents.py#L86,L255,L406,L464,L611 (5 routes) / code:app/api/routes/__init__.py#L5,L7 (exports documents) / doc:app/main.py#L139 ('/api/v1/documents/ingest endpoint: 20 requests/minute')"
       - claim: "main.py は documents ルータを import も include_router もしない。取り込まれているのは health/query/ingest の3ルータのみ。/documents/* エンドポイントは到達不能なデッドコード。いかなるテストも /documents 経路を検証しない"
         source: "code:app/main.py#L24 ('from app.api.routes import query, health, ingest' — documents 無し) / code:app/main.py#L246-L248 (include_router は health/query/ingest のみ) / tests/ (grep 'documents/' -> 0 件)"
-    status: "open"
-    active_workaround:
-      decision_key: "AUTO:DocumentsRouter.route_registration:unregistered_dead_code"
-      summary: "コード実装(main.py の登録状態)を正とし、/documents/* エンドポイントは現在 到達不能なデッドコード(定義済みだがルータ未登録)と扱う。ライブな外部 API 面は /query, /ingest, /health のみ。これにより INV-IF-001 を是正済み(/documents をライブAPIから除外)。概念辞書に Document 系ルート term を追加しない(稼働根拠がないため Rule 1/4)。解決は app/main.py への include_router 追加(実装)に委ねる（概念整備のスコープ外）。"
+    status: "resolved"
+    resolution: "解決済 (2026-09-11): app/main.py が documents ルータを import し、prefix='/api/v1' で include_router するよう修正。tests/unit/test_api_docs.py に OpenAPI の /api/v1/documents/ingest 登録回帰テストを追加した。app/main.py と documents.py の py_compile は通過。pytest は実行環境の fastapi が namespace package で FastAPI を提供しないため、対象テストの実行を保留している。"
 
   - id: "CFLT-APIPATH-001"
     term: "QueryRequest"

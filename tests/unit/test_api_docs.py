@@ -193,6 +193,26 @@ class TestAPIDocumentation:
 
         # /ingest/status endpoint is optional (may not exist); ingest above is verified
 
+    def test_document_examples_match_production_prefix(self):
+        """Keep document API examples aligned with the mounted production paths."""
+        schema = app.openapi()
+        document_descriptions = [
+            operation.get("description", "")
+            for path, operations in schema["paths"].items()
+            if path.startswith("/api/v1/documents/")
+            for operation in operations.values()
+            if isinstance(operation, dict)
+        ]
+
+        assert "/api/v1/documents/batch/{task_id}/status" in schema["paths"]
+        assert "/api/v1/documents/versioning" in schema["paths"]
+        assert document_descriptions
+        assert all(
+            "http://localhost:8000/documents/" not in description
+            and "`/documents/" not in description
+            for description in document_descriptions
+        )
+
     def test_health_endpoint_documentation(self, client):
         """Test health endpoints have documentation / ヘルスエンドポイントがドキュメントを持っていることをテスト"""
         response = client.get("/openapi.json")

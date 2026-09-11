@@ -607,7 +607,7 @@ async def ingest_documents_batch(
 
     ## Check Status / ステータス確認
 
-    Use the returned `task_id` with GET `/documents/batch/{task_id}/status`
+    Use the returned `task_id` with GET `/api/v1/documents/batch/{task_id}/status`
 
     Args:
         request: Batch ingestion request
@@ -722,7 +722,7 @@ async def get_batch_status(task_id: str) -> BatchStatusResponse:
 
     ```bash
     # Check status
-    curl "http://localhost:8000/documents/batch/a1b2c3d4-e5f6-7890-abcd-ef1234567890/status"
+    curl "http://localhost:8000/api/v1/documents/batch/a1b2c3d4-e5f6-7890-abcd-ef1234567890/status"
     ```
 
     Args:
@@ -1048,10 +1048,10 @@ async def get_document_version_history(
 
     ```bash
     # Get history without content
-    curl "http://localhost:8000/documents/versioning/doc-001/history"
+    curl "http://localhost:8000/api/v1/documents/versioning/doc-001/history"
 
     # Get history with full content
-    curl "http://localhost:8000/documents/versioning/doc-001/history?include_content=true"
+    curl "http://localhost:8000/api/v1/documents/versioning/doc-001/history?include_content=true"
     ```
 
     Args:
@@ -1119,7 +1119,7 @@ async def get_document_version(
 
     ```bash
     # Get version 2 of document
-    curl "http://localhost:8000/documents/versioning/doc-001/versions/2"
+    curl "http://localhost:8000/api/v1/documents/versioning/doc-001/versions/2"
     ```
 
     Args:
@@ -1189,7 +1189,7 @@ async def compare_document_versions(
 
     ```bash
     # Compare version 1 and 3
-    curl "http://localhost:8000/documents/versioning/doc-001/compare?version1=1&version2=3"
+    curl "http://localhost:8000/api/v1/documents/versioning/doc-001/compare?version1=1&version2=3"
     ```
 
     Args:
@@ -1256,7 +1256,7 @@ async def delete_versioned_document(document_id: str) -> Dict[str, Any]:
     ## Example / 例
 
     ```bash
-    curl -X DELETE "http://localhost:8000/documents/versioning/doc-001"
+    curl -X DELETE "http://localhost:8000/api/v1/documents/versioning/doc-001"
     ```
 
     Args:
@@ -1307,7 +1307,7 @@ async def list_versioned_documents() -> Dict[str, Any]:
     ## Example / 例
 
     ```bash
-    curl "http://localhost:8000/documents/versioning"
+    curl "http://localhost:8000/api/v1/documents/versioning"
     ```
 
     Returns:
@@ -1349,7 +1349,7 @@ async def get_versioning_statistics() -> VersioningStatsResponse:
     ## Example / 例
 
     ```bash
-    curl "http://localhost:8000/documents/versioning/stats"
+    curl "http://localhost:8000/api/v1/documents/versioning/stats"
     ```
 
     Returns:

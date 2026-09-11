@@ -8,10 +8,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.api.routes.query import stream_query
+from app.api.routes.query import router, stream_query
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -54,6 +55,18 @@ class TestAPIDocumentation:
 
         assert "paths" in schema
         assert len(schema["paths"]) > 0
+
+    def test_streaming_route_prefix_matches_fixture_and_production_mount(self):
+        """Keep direct-router and production route paths distinct."""
+        production_paths = app.openapi()["paths"]
+        assert "/api/v1/query/stream" in production_paths
+        assert "/query/stream" not in production_paths
+
+        direct_app = FastAPI()
+        direct_app.include_router(router)
+        direct_paths = direct_app.openapi()["paths"]
+        assert "/query/stream" in direct_paths
+        assert "/api/v1/query/stream" not in direct_paths
 
     def test_all_endpoints_documented(self, client):
         """Test that all endpoints have documentation / すべてのエンドポイントがドキュメント化されていることをテスト"""

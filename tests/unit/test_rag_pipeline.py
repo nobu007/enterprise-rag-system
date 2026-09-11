@@ -3,7 +3,7 @@ Unit tests for RAG Pipeline
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock, AsyncMock, call
 from app.services.rag_pipeline import RAGPipeline, RAGResponse
 from app.services.retrieval import RetrievalResult
 from app.services.reranker import Reranker
@@ -318,12 +318,21 @@ async def test_rag_pipeline_batch_query_returns_error_response_for_failed_questi
             tokens_used=1,
             retrieval_results=[]
         ),
-        RuntimeError("retrieval unavailable")
+        RuntimeError("retrieval unavailable"),
+        RAGResponse(
+            answer="third answer",
+            sources=[],
+            confidence=0.8,
+            latency_ms=2,
+            tokens_used=2,
+            retrieval_results=[]
+        )
     ])
 
-    responses = await pipeline.batch_query(["working question", "failed question"])
+    questions = ["working question", "failed question", "later question"]
+    responses = await pipeline.batch_query(questions)
 
-    assert len(responses) == 2
+    assert len(responses) == 3
     assert responses[0].answer == "first answer"
     assert responses[1].answer == "Error: retrieval unavailable"
     assert responses[1].sources == []
@@ -331,6 +340,10 @@ async def test_rag_pipeline_batch_query_returns_error_response_for_failed_questi
     assert responses[1].latency_ms == 0
     assert responses[1].tokens_used == 0
     assert responses[1].retrieval_results == []
+    assert responses[2].answer == "third answer"
+    assert pipeline.query.await_args_list == [
+        call(question, top_k=5, collection="default") for question in questions
+    ]
 
 
 def test_confidence_calculation(mock_retriever, mock_openai_client, sample_retrieval_results):

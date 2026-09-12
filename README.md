@@ -1409,7 +1409,7 @@ graph TB
 | **Ingestion** | Unstructured.io, PyPDF2, Pandoc | Document parsing |
 | **Chunking** | LangChain RecursiveCharacterTextSplitter | Semantic segmentation |
 | **Embedding** | OpenAI Ada-002, Cohere Embed v3 | Vector representation |
-| **Vector Store** | Pinecone, Weaviate, FAISS | Similarity search |
+| **Vector Store** | Pinecone, FAISS | Similarity search |
 | **Search** | BM25, Dense retrieval, Hybrid | Query processing |
 | **LLM** | GPT-4, Claude 3, Gemini Pro | Answer generation |
 | **Orchestration** | LangChain, LangGraph | Pipeline management |

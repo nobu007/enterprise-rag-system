@@ -266,6 +266,25 @@ class TestAPIDocumentation:
             match == RELATIONSHIP_API_PREFIX for _, match in documented_paths
         ), documented_paths
 
+    def test_vector_store_documentation_matches_implemented_backends(self):
+        """Keep the component table aligned with concrete VectorDB classes."""
+        from app.core.vectordb import VectorDB
+
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        vector_store_line = next(
+            line for line in readme.splitlines()
+            if line.startswith("| **Vector Store** |")
+        )
+        implemented_backends = {
+            subclass.__name__.removesuffix("VectorDB")
+            for subclass in VectorDB.__subclasses__()
+        }
+
+        documented_backends = set(
+            vector_store_line.split("|")[2].strip().split(", ")
+        )
+        assert documented_backends == implemented_backends
+
     def test_testing_documentation_matches_repository_layout(self):
         """Keep README test commands aligned with the checked-in test suites."""
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")

@@ -16,7 +16,7 @@
 - **CI Configuration:** GitHub Actions等での自動テスト実行設定
 
 **タスク:**
-- [ ] `pytest` の設定ファイル (`pytest.ini`) を作成する
+- [x] `pytest` の設定ファイル (`pytest.ini`) を作成する — 2026-09-13: `pytest.ini` 実在を確認（[pytest]・test_*.py discovery）。以後の本 Issue の残タスクなし
 - [x] `app/services/rag_pipeline.py` の単体テストを作成する — 2026-09-12: `batch_query` の個別失敗時エラー応答と、失敗後も後続質問を処理する継続性を回帰テストで検証
 - [x] `app/api/routes/query.py` のAPIテストを作成する — 2026-09-12: production mount `/api/v1/query/` の成功応答を回帰テストで検証
 - [x] テスト実行用のドキュメントを更新する — 2026-09-12: `pytest tests/ -v --cov=app`（TestClient は uvloop backend）→ 900 passed, 1 warning, 86% coverage
@@ -31,8 +31,8 @@
 現在、アプリケーションのログ出力に `print()` が多用されています。これは本番環境での監視やデバッグに適していません。標準の `logging` モジュールまたは `structlog` を導入し、JSON形式などでログを出力できるようにすべきです。
 
 **タスク:**
-- [ ] ロギング設定を行うユーティリティモジュールを作成する
-- [ ] `app/main.py` および各サービス内の `print()` をロガー呼び出しに置換する
+- [x] ロギング設定を行うユーティリティモジュールを作成する — 2026-09-13: `app/core/logging_config.py` 実在（`get_logger()` 提供・ルート HANDLER へ伝播）を確認
+- [ ] `app/main.py` および各サービス内の `print()` をロガー呼び出しに置換する ← **次の 1 run の対象（2026-09-13 時点の残存 6 箇所）**: `app/api/routes/query.py:420-421`、`app/core/concurrency.py:209,210,240,257`（`app/core/database.py:291` は docstring 内なので対象外）
 - [ ] リクエストID等をログに含め、トレーサビリティを向上させる
 
 ---
@@ -45,9 +45,9 @@
 FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.completions.create` メソッドが使用されています。これはイベントループをブロックし、同時リクエスト時のパフォーマンスを著しく低下させます。
 
 **タスク:**
-- [ ] `openai` クライアントを `AsyncOpenAI` に変更する
-- [ ] `RAGPipeline` クラスのメソッドを `async def` にリファクタリングする
-- [ ] 関連する呼び出し元（APIルート）を `await` を使用するように修正する
+- [x] `openai` クライアントを `AsyncOpenAI` に変更する — 2026-09-13: `app/main.py:26,47`・`app/api/dependencies.py:9` で `AsyncOpenAI` 使用済みを確認
+- [x] `RAGPipeline` クラスのメソッドを `async def` にリファクタリングする — 2026-09-13: `app/services/rag_pipeline.py` の `query`/`batch_query`/`stream_query`/`_call_llm` が `async def` 済みを確認
+- [x] 関連する呼び出し元（APIルート）を `await` を使用するように修正する — 2026-09-13: `app/api/routes/query.py:152`（`await pipeline.query`）・`:265`（`await pipeline.batch_query`）を確認
 
 ---
 
@@ -59,9 +59,9 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 `app/main.py` 内でCORS設定が `allow_origins=["*"]` となっています。また、ファイルパスなどが一部ハードコードされている箇所が見受けられます。これらを環境変数や設定ファイルから制御できるように修正する必要があります。
 
 **タスク:**
-- [ ] `config.py` に `ALLOWED_ORIGINS` 設定を追加する
-- [ ] `app/main.py` のCORS設定を修正する
-- [ ] コード内のハードコードされたパス（例: `./data/faiss_index.bin`）を設定ファイル経由で参照するように変更する
+- [x] `config.py` に `ALLOWED_ORIGINS` 設定を追加する — 2026-09-13: `app/core/config.py` の settings 経由で `ALLOWED_ORIGINS` 参照済みを確認
+- [x] `app/main.py` のCORS設定を修正する — 2026-09-13: `app/main.py:224` `allow_origins=settings.ALLOWED_ORIGINS`（`"*"` 消滅）を確認
+- [x] コード内のハードコードされたパス（例: `./data/faiss_index.bin`）を設定ファイル経由で参照するように変更する — 2026-09-13: `app/core/config.py:33` `faiss_index_path: str = Field("./data/faiss_index.bin")`（設定変更可能な Field に集約済み）を確認
 
 ---
 

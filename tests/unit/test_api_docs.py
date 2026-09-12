@@ -4,6 +4,7 @@ APIドキュメントとOpenAPIスキーマ検証のテスト
 """
 
 import inspect
+import json
 import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -294,12 +295,53 @@ class TestAPIDocumentation:
         cache_stats_path = schema["paths"].get("/cache/stats")
         assert cache_stats_path is not None, "Cache stats endpoint not found"
 
-    def test_readme_health_examples_match_mounted_routes(self):
-        """Do not document the unmounted database health endpoint."""
-        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    def test_health_routes_and_response_match_readme_contract(self, client):
+        """Keep the documented health endpoint aligned with the live API."""
+        schema = client.get("/openapi.json").json()
+        paths = schema["paths"]
 
-        assert "http://localhost:8000/health/detailed" in readme
-        assert "http://localhost:8000/health/db" not in readme
+        assert "/health/detailed" in paths
+        assert set(paths["/health/detailed"]) == {"get"}
+        assert "/health/db" not in paths
+        assert client.get("/health/db").status_code == 404
+
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        health_section = readme.split("#### Health Check", 1)[1]
+        health_section = health_section.split("#### Best Practices", 1)[0]
+        response_match = re.search(
+            r"# Example response:\s*\n(?P<body>\{.*?\n\})\s*```",
+            health_section,
+            re.DOTALL,
+        )
+        assert response_match is not None, "Health response example not found"
+
+        documented_response = json.loads(response_match.group("body"))
+        response = client.get("/health/detailed")
+        assert response.status_code == 200
+        assert response.json() == documented_response
+
+    def test_documented_health_urls_do_not_use_unmounted_route(self):
+        """Scan Markdown docs for executable or absolute stale health URLs."""
+        stale_patterns = (
+            re.compile(
+                r"^\s*(?:curl|wget)\b[^\n]*/health/db\b", re.IGNORECASE
+            ),
+            re.compile(r"https?://[^\s`\"')]+/health/db\b", re.IGNORECASE),
+        )
+        stale_references = []
+
+        for path in REPO_ROOT.rglob("*.md"):
+            if ".git" in path.parts:
+                continue
+            for line_number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if any(pattern.search(line) for pattern in stale_patterns):
+                    stale_references.append(
+                        f"{path.relative_to(REPO_ROOT)}:{line_number}"
+                    )
+
+        assert not stale_references, stale_references
 
     def test_error_response_models_defined(self, client):
         """Test that error response models are defined / エラーレスポンスモデルが定義されていることをテスト"""

@@ -32,7 +32,7 @@
 
 **タスク:**
 - [x] ロギング設定を行うユーティリティモジュールを作成する — 2026-09-13: `app/core/logging_config.py` 実在（`get_logger()` 提供・ルート HANDLER へ伝播）を確認
-- [ ] `app/main.py` および各サービス内の `print()` をロガー呼び出しに置換する ← **次の 1 run の対象（2026-09-13 時点の残存 6 箇所）**: `app/api/routes/query.py:420-421`、`app/core/concurrency.py:209,210,240,257`（`app/core/database.py:291` は docstring 内なので対象外）
+- [x] `app/main.py` および各サービス内の `print()` をロガー呼び出しに置換する — 2026-09-13: `query.py` と `concurrency.py` の例示コードに残っていた6箇所を `logger.info()` に置換（`database.py:291` と logging 設定の説明文は対象外）
 - [ ] リクエストID等をログに含め、トレーサビリティを向上させる
 
 ---

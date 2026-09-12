@@ -417,8 +417,8 @@ async def stream_query(
             if data.get('content'):
                 full_response += data['content']
             if data.get('is_done'):
-                print('Complete:', full_response)
-                print('Sources:', data.get('sources'))
+                logger.info('Complete: %s', full_response)
+                logger.info('Sources: %s', data.get('sources'))
                 break
     ```
 

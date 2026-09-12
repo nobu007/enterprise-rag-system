@@ -206,8 +206,8 @@ class ConcurrencyLimiter:
             ```python
             limiter = ConcurrencyLimiter(max_concurrent=10)
             stats = limiter.get_stats()
-            print(f"Active requests: {stats['active_requests']}")
-            print(f"Peak concurrent: {stats['peak_concurrent']}")
+            logger.info("Active requests: %s", stats["active_requests"])
+            logger.info("Peak concurrent: %s", stats["peak_concurrent"])
             ```
         """
         return self.stats.to_dict()
@@ -237,7 +237,7 @@ class ConcurrencyLimiter:
             ```python
             limiter = ConcurrencyLimiter(max_concurrent=10)
             available = limiter.available_slots
-            print(f"Available slots: {available}")
+            logger.info("Available slots: %s", available)
             ```
         """
         return self.max_concurrent - self.stats.active_requests
@@ -254,7 +254,7 @@ class ConcurrencyLimiter:
             ```python
             limiter = ConcurrencyLimiter(max_concurrent=10)
             utilization = limiter.utilization
-            print(f"Utilization: {utilization * 100:.1f}%")
+            logger.info("Utilization: %.1f%%", utilization * 100)
             ```
         """
         return self.stats.active_requests / self.max_concurrent if self.max_concurrent > 0 else 0.0

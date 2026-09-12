@@ -24,6 +24,43 @@ RELATIONSHIP_API_PATH = re.compile(
 )
 
 
+def _concrete_vector_db_classes(base_class):
+    """Discover concrete VectorDB implementations, including indirect ones."""
+    classes = []
+    pending = list(base_class.__subclasses__())
+    seen = set()
+    while pending:
+        candidate = pending.pop()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        pending.extend(candidate.__subclasses__())
+        if not inspect.isabstract(candidate):
+            classes.append(candidate)
+    return classes
+
+
+def _documented_vector_store_backends(readme):
+    """Parse and validate the Vector Store component-table row."""
+    rows = []
+    for line in readme.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells and cells[0] == "**Vector Store**":
+            rows.append(cells)
+
+    assert len(rows) == 1, "README must contain exactly one Vector Store row"
+    row = rows[0]
+    assert len(row) >= 3, "Vector Store row must contain a purpose column"
+    backends = [backend.strip() for backend in row[1].split(",")]
+    assert all(backends), "Vector Store row must not contain empty backends"
+    assert len(backends) == len(set(backends)), (
+        "Vector Store row must not contain duplicate backends"
+    )
+    return set(backends)
+
+
 @pytest.fixture
 def client():
     """Test client fixture with mocked lifespan dependencies / モック化されたlifespan依存のテストクライアントフィクスチャ"""
@@ -271,19 +308,27 @@ class TestAPIDocumentation:
         from app.core.vectordb import VectorDB
 
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        vector_store_line = next(
-            line for line in readme.splitlines()
-            if line.startswith("| **Vector Store** |")
-        )
         implemented_backends = {
             subclass.__name__.removesuffix("VectorDB")
-            for subclass in VectorDB.__subclasses__()
+            for subclass in _concrete_vector_db_classes(VectorDB)
         }
 
-        documented_backends = set(
-            vector_store_line.split("|")[2].strip().split(", ")
-        )
+        documented_backends = _documented_vector_store_backends(readme)
         assert documented_backends == implemented_backends
+
+    @pytest.mark.parametrize(
+        "row",
+        [
+            "| **Vector Store** | | Similarity search |",
+            "| **Vector Store** | Pinecone, Pinecone | Similarity search |",
+            "| **Other Component** | Pinecone | Similarity search |",
+        ],
+        ids=["empty-backend", "duplicate-backend", "missing-row"],
+    )
+    def test_vector_store_documentation_rejects_malformed_rows(self, row):
+        """Fail clearly when the component table cannot describe backends."""
+        with pytest.raises(AssertionError):
+            _documented_vector_store_backends(row)
 
     def test_testing_documentation_matches_repository_layout(self):
         """Keep README test commands aligned with the checked-in test suites."""

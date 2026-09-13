@@ -256,6 +256,49 @@ class TestCollectionLogInjectionVectorDB:
         # Escaped form is present -> value preserved, only log rep changed.
         assert "x\\nFAKE LOG line\\r" in msg
 
+    def test_collection_crlf_neutralised_in_create_upsert_save_logs(
+        self, temp_vector_db, sample_vectors, sample_metadata, tmp_path
+    ):
+        """Issue 12 sweep: the create/upsert/save INFO lines interpolate the
+        client-controlled collection name raw (the delete success line got the
+        same treatment in 1265bb1). save()'s message also embeds index_path,
+        which itself carries the collection via f"{path}.{collection}", so
+        both halves must be sanitised."""
+        vectordb_logger = logging.getLogger("app.core.vectordb")
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(record)
+
+        handler = _Capture(logging.DEBUG)
+        vectordb_logger.addHandler(handler)
+        vectordb_logger.setLevel(logging.DEBUG)
+        try:
+            collection = "x\nFAKE LOG line\r"
+            temp_vector_db.create_index(dimension=384, collection=collection)
+            temp_vector_db.upsert(
+                vectors=[sample_vectors[0]],
+                ids=["doc1"],
+                metadata=[sample_metadata[0]],
+                collection=collection,
+            )
+            temp_vector_db.save(str(tmp_path / "idx"), collection=collection)
+        finally:
+            vectordb_logger.removeHandler(handler)
+
+        relevant = [
+            r.getMessage()
+            for r in captured
+            if "collection" in r.getMessage()
+        ]
+        assert len(relevant) >= 3, "create/upsert/save log lines were not emitted"
+        for msg in relevant:
+            # No raw CR/LF survives -> no forged log line.
+            assert "\n" not in msg
+            assert "\r" not in msg
+        # Escaped form is present -> value preserved, only log rep changed.
+        assert any("x\\nFAKE LOG line\\r" in msg for msg in relevant)
 
 
 def test_vector_db_get_stats_multiple_collections(temp_vector_db, sample_vectors, sample_metadata):
@@ -775,6 +818,30 @@ def test_delete_in_default_collection_rebinds_index_alias(temp_vector_db, sample
     # The legacy metadata alias shares the store dict, so the deleted id is
     # gone from it too.
     assert temp_vector_db.metadata_store == {"doc2": sample_metadata[1]}
+
+
+def test_delete_in_default_collection_rebinds_mapping_aliases(temp_vector_db, sample_vectors, sample_metadata):
+    """After a default-collection delete, the legacy id_to_idx/idx_to_id
+    aliases must point at the rebuilt mappings, not the pre-rebuild dicts.
+
+    _rebuild_without_ids replaces the per-collection mapping dicts and only
+    re-aliased self.index; the connect()/create_index() aliases
+    (self.id_to_idx / self.idx_to_id) kept serving stale pre-rebuild data
+    (Issue 12).
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+
+    temp_vector_db.delete(["doc1"], collection="default")
+
+    assert temp_vector_db.id_to_idx is temp_vector_db.id_to_idx_mappings["default"]
+    assert temp_vector_db.id_to_idx == {"doc2": 0}
+    assert temp_vector_db.idx_to_id is temp_vector_db.idx_to_id_mappings["default"]
+    assert temp_vector_db.idx_to_id == {0: "doc2"}
 
 
 def test_delete_in_named_collection_preserves_metric_and_siblings(temp_vector_db, sample_vectors, sample_metadata):

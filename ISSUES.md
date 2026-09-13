@@ -8,7 +8,7 @@
 
 ---
 
-## Issue 12: vectordb の残存整理 — 生 `collection` ログと rebuild 後のレガシー別名 — **未着手**
+## Issue 12: vectordb の残存整理 — 生 `collection` ログと rebuild 後のレガシー別名 — **完了・2026-09-14**
 
 **内容:** Issue 11 の `delete()` 成功ログは `sanitize_for_log` で統一したが、
 `app/core/vectordb.py` にはクライアント指定の `collection` を生のまま埋め込む
@@ -18,11 +18,19 @@
 （2026-09-14 の外部読み手 grep で現行読み手ゼロを確認済み・潜在バグ）。
 
 **タスク:**
-- [ ] `_create_collection_index` の "Created FAISS index for collection" info（:265）
-- [ ] `upsert` の "Upserted ... into collection" info（:474）
-- [ ] `save` の "Saved FAISS index for collection" info ×2（:621, :643）
-- [ ] rebuild 後に `self.id_to_idx` / `self.idx_to_id` 別名を貼り直すか、読み手のない
-      レガシー別名を廃止する
+- [x] `_create_collection_index` の "Created FAISS index for collection" info（:265）
+- [x] `upsert` の "Upserted ... into collection" info（:474）
+- [x] `save` の "Saved FAISS index for collection" info ×2（:621, :643）—
+      メッセージの `index_path` も `f"{path}.{collection}"` で collection を
+      埋め込むため併せてサニタイズ
+- [x] rebuild 後に `self.id_to_idx` / `self.idx_to_id` 別名を貼り直すか、読み手のない
+      レガシー別名を廃止する → 貼り直しを採用（diff 最小・外部互換維持）
+- ✅ 2026-09-14 run: 生 `collection` ログ 4 箇所を `sanitize_for_log` 経由に変更
+  （save は `index_path` 側も）。`_rebuild_without_ids` が default のレガシー別名
+  `self.id_to_idx` / `self.idx_to_id` を新辞書へ再張り（pre-fix で
+  `{'doc1': 0, 'doc2': 1}` の陳腐化をピンテストが再現）。create/upsert/save の
+  CRLF ログ注入ピンテストと別名再張りピンテストを追加（pre-fix 失敗確認済み）。
+  **297 passed / 0 failed**・`compileall app` OK。
 
 ## Issue 11: upsert 同一バッチ内の重複 ID が二重登録される／`delete()` が未対応のまま — **完了・2026-09-14**
 

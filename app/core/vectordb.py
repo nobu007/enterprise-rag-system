@@ -262,7 +262,7 @@ class FAISSVectorDB(VectorDB):
                 self.id_to_idx = self.id_to_idx_mappings[collection]
                 self.idx_to_id = self.idx_to_id_mappings[collection]
 
-            logger.info(f"Created FAISS index for collection '{collection}' with dimension: {dimension}")
+            logger.info(f"Created FAISS index for collection '{sanitize_for_log(collection)}' with dimension: {dimension}")
 
         except ImportError:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
@@ -403,6 +403,12 @@ class FAISSVectorDB(VectorDB):
             new_idx_to_id[new_idx] = id_
         self.id_to_idx_mappings[collection] = new_id_to_idx
         self.idx_to_id_mappings[collection] = new_idx_to_id
+        if collection == "default":
+            # Re-alias the legacy per-field mappings too: connect() and
+            # _create_collection_index() bound them to the old dicts, and a
+            # stale alias would keep serving pre-rebuild id<->idx data.
+            self.id_to_idx = new_id_to_idx
+            self.idx_to_id = new_idx_to_id
         # Drop the removed ids' metadata too, so a deleted document leaves
         # no stale trace behind (the upsert path re-adds and overwrites it).
         metadata_store = self.metadata_stores[collection]
@@ -471,7 +477,7 @@ class FAISSVectorDB(VectorDB):
             idx_to_id[idx] = id_
             metadata_store[id_] = meta
 
-        logger.info(f"Upserted {len(vectors)} vectors into collection '{collection}'")
+        logger.info(f"Upserted {len(vectors)} vectors into collection '{sanitize_for_log(collection)}'")
     
     def search(
         self,
@@ -622,7 +628,9 @@ class FAISSVectorDB(VectorDB):
                     'collection': collection
                 }, f, ensure_ascii=False, indent=2)
 
-            logger.info(f"Saved FAISS index for collection '{collection}' to: {index_path}")
+            # index_path embeds the client-controlled collection name via
+            # f"{path}.{collection}", so it needs the same treatment (CWE-117).
+            logger.info(f"Saved FAISS index for collection '{sanitize_for_log(collection)}' to: {sanitize_for_log(index_path)}")
         else:
             # Save all collections
             for collection_name, index in self.indices.items():
@@ -644,7 +652,7 @@ class FAISSVectorDB(VectorDB):
                         'collection': collection_name
                     }, f, ensure_ascii=False, indent=2)
 
-                logger.info(f"Saved FAISS index for collection '{collection_name}' to: {index_path}")
+                logger.info(f"Saved FAISS index for collection '{sanitize_for_log(collection_name)}' to: {sanitize_for_log(index_path)}")
 
 
 def get_vector_db(db_type: str = "faiss", **kwargs) -> VectorDB:

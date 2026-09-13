@@ -31,6 +31,11 @@
   `{'doc1': 0, 'doc2': 1}` の陳腐化をピンテストが再現）。create/upsert/save の
   CRLF ログ注入ピンテストと別名再張りピンテストを追加（pre-fix 失敗確認済み）。
   **297 passed / 0 failed**・`compileall app` OK。
+- ✅ 2026-09-14 Test Stage: 別名再張りピンの未カバー経路を 2 件追加ピン —
+  update-upsert 経路（`upsert` の duplicate_ids branch → rebuild。pre-fix 失敗
+  確認済み: 陳腐 alias `{'doc1': 0, 'doc2': 1}` vs 再構築後 `{'doc1': 1, 'doc2': 0}`）と、
+  named collection の rebuild が default の別名を奪わないことの負case
+  （`collection == "default"` ガードの回帰防止ピン）。**299 passed / 0 failed**。
 
 ## Issue 11: upsert 同一バッチ内の重複 ID が二重登録される／`delete()` が未対応のまま — **完了・2026-09-14**
 

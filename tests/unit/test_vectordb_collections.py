@@ -844,6 +844,59 @@ def test_delete_in_default_collection_rebinds_mapping_aliases(temp_vector_db, sa
     assert temp_vector_db.idx_to_id == {0: "doc2"}
 
 
+def test_update_upsert_in_default_collection_rebinds_mapping_aliases(temp_vector_db, sample_vectors, sample_metadata):
+    """Re-upserting a stored id (update) also routes through
+    _rebuild_without_ids (upsert's duplicate_ids branch), so the legacy
+    mapping aliases must be rebound here too, not just on delete (Issue 12).
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[2]],
+        ids=["doc1"],
+        metadata=[sample_metadata[2]],
+        collection="default",
+    )
+
+    assert temp_vector_db.id_to_idx is temp_vector_db.id_to_idx_mappings["default"]
+    # Rebuild dropped doc1's old vector (doc2 -> 0), then the batch re-added
+    # doc1 at ntotal (-> 1).
+    assert temp_vector_db.id_to_idx == {"doc2": 0, "doc1": 1}
+    assert temp_vector_db.idx_to_id is temp_vector_db.idx_to_id_mappings["default"]
+    assert temp_vector_db.idx_to_id == {0: "doc2", 1: "doc1"}
+
+
+def test_delete_in_named_collection_leaves_default_mapping_aliases_alone(temp_vector_db, sample_vectors, sample_metadata):
+    """The alias rebinding is guarded to collection == "default": a named
+    collection's rebuild must not steal the legacy aliases, which still serve
+    the default collection's mappings.
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["n1"],
+        metadata=[sample_metadata[0]],
+        collection="other",
+    )
+
+    temp_vector_db.delete(["n1"], collection="other")
+
+    assert temp_vector_db.id_to_idx is temp_vector_db.id_to_idx_mappings["default"]
+    assert temp_vector_db.id_to_idx == {"doc1": 0, "doc2": 1}
+    assert temp_vector_db.idx_to_id is temp_vector_db.idx_to_id_mappings["default"]
+    assert temp_vector_db.idx_to_id == {0: "doc1", 1: "doc2"}
+
+
 def test_delete_in_named_collection_preserves_metric_and_siblings(temp_vector_db, sample_vectors, sample_metadata):
     """A delete-rebuild in one collection keeps its metric and leaves the rest alone."""
     temp_vector_db.upsert(

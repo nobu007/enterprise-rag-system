@@ -8,7 +8,7 @@
 
 ---
 
-## Issue 11: upsert 同一バッチ内の重複 ID が二重登録される／`delete()` が未対応のまま — **未着手・2026-09-14 起票**
+## Issue 11: upsert 同一バッチ内の重複 ID が二重登録される／`delete()` が未対応のまま — **完了・2026-09-14**
 
 **内容:** Issue 10 の修正（`6a00e77`）はインデックス既存 ID との照合のみで、
 同一 upsert 呼び出し内の重複（`ids=["x", "x"]`。id が既知でも rebuild 後に
@@ -16,11 +16,16 @@
 "not supported" 警告のままで、`_rebuild_without_ids` と同じ機構で実装可能。
 
 **タスク:**
-- [ ] upsert 冒頭でバッチ内重複も除去する（末尾勝ち。既知 ID 照合の前段で ids を set 化して len 比較）
-- [ ] `FAISSVectorDB.delete()` を `_rebuild_without_ids` に委譲し "not supported" 警告を解消する
-- ピンテスト: `test_upsert_duplicate_ids_within_one_batch_stay_unique` を
+- [x] upsert 冒頭でバッチ内重複も除去する（末尾勝ち。既知 ID 照合の前段で ids を set 化して len 比較）
+- [x] `FAISSVectorDB.delete()` を `_rebuild_without_ids` に委譲し "not supported" 警告を解消する
+- [x] ピンテスト: `test_upsert_duplicate_ids_within_one_batch_stay_unique` を
   `tests/unit/test_vectordb_collections.py` に strict xfail で追加済み。修正後に
   XPASS でスイートが失敗するため、その際はマーカーを外すこと
+- ✅ 2026-09-14 run: upsert 冒頭でバッチ内重複を末尾勝ちで畳み込み（既知 ID 照合の前段）、
+  `delete()` を `_rebuild_without_ids` に委譲（未知 ID・未知コレクションは no-op）。
+  rebuild 時に削除 ID のメタデータも `metadata_stores` から除去。xfail マーカーを外し、
+  delete のピンテスト `test_delete_drops_id_and_keeps_collection_searchable` を追加。
+  **288 passed / 0 failed**・`compileall app` OK。
 
 ## Issue 10: FAISS `upsert` が追記専用で同一 ID が重複する — **完了・2026-09-14**
 

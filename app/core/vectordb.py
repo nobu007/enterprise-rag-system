@@ -403,6 +403,11 @@ class FAISSVectorDB(VectorDB):
             new_idx_to_id[new_idx] = id_
         self.id_to_idx_mappings[collection] = new_id_to_idx
         self.idx_to_id_mappings[collection] = new_idx_to_id
+        # Drop the removed ids' metadata too, so a deleted document leaves
+        # no stale trace behind (the upsert path re-adds and overwrites it).
+        metadata_store = self.metadata_stores[collection]
+        for id_ in remove_ids:
+            metadata_store.pop(id_, None)
 
     def upsert(
         self,
@@ -412,6 +417,20 @@ class FAISSVectorDB(VectorDB):
         collection: str = "default"
     ) -> None:
         """Insert or update vectors in FAISS for a specific collection"""
+        # Collapse in-batch duplicate ids first (last occurrence wins): the
+        # metadata loop below only remembers the last index per id, but every
+        # copy would still be added to the FAISS index and search would
+        # return the id once per copy. This runs before the known-id check
+        # so a duplicate of a stored id dedupes against the rebuild path.
+        last_of: Dict[str, int] = {}
+        for i, id_ in enumerate(ids):
+            last_of[id_] = i
+        if len(last_of) != len(ids):
+            keep = sorted(last_of.values())
+            vectors = [vectors[i] for i in keep]
+            ids = [ids[i] for i in keep]
+            metadata = [metadata[i] for i in keep]
+
         # Get or create collection index, inferring the dimension from the
         # incoming vectors so a fresh collection bootstraps without a prior
         # create_index() call.
@@ -509,8 +528,28 @@ class FAISSVectorDB(VectorDB):
         return search_results
     
     def delete(self, ids: List[str], collection: str = "default") -> None:
-        """Delete vectors from FAISS (not directly supported, requires rebuild)"""
-        logger.warning(f"FAISS does not support direct deletion from collection '{collection}'. Index needs to be rebuilt.")
+        """Delete vectors by id from a collection.
+
+        Flat FAISS indexes cannot delete in place, so deletion rebuilds the
+        collection without the given ids (same mechanism as the upsert
+        update path). Unknown ids and unknown collections are no-ops.
+        """
+        if not ids:
+            return
+        index = self._get_collection_index(collection)
+        if index is None:
+            logger.warning(
+                f"Collection '{sanitize_for_log(collection)}' not found; nothing to delete"
+            )
+            return
+
+        known_ids = self.id_to_idx_mappings.get(collection, {})
+        remove_ids = {id_ for id_ in ids if id_ in known_ids}
+        if not remove_ids:
+            return
+
+        self._rebuild_without_ids(collection, remove_ids)
+        logger.info(f"Deleted {len(remove_ids)} vectors from collection '{collection}'")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get FAISS index statistics for all collections"""

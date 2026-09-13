@@ -650,13 +650,6 @@ def test_upsert_rebuild_in_named_collection_leaves_default_intact(temp_vector_db
     assert [r for r in results if r.id == "doc1"][0].text == sample_metadata[0]["text"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known limitation (ISSUES.md Issue 11): upsert only consults ids "
-    "already stored in the index, so duplicate ids within one batch "
-    "(['x', 'x']) are all appended. Remove this marker together with the "
-    "Issue 11 fix.",
-)
 def test_upsert_duplicate_ids_within_one_batch_stay_unique(temp_vector_db, sample_vectors):
     """Desired contract: the last occurrence of an in-batch duplicate id wins."""
     temp_vector_db.upsert(
@@ -670,3 +663,32 @@ def test_upsert_duplicate_ids_within_one_batch_stay_unique(temp_vector_db, sampl
     results = temp_vector_db.search(sample_vectors[1], top_k=10, collection="default")
     assert [r.id for r in results] == ["x"]
     assert results[0].text == "v2"
+
+
+def test_delete_drops_id_and_keeps_collection_searchable(temp_vector_db, sample_vectors, sample_metadata):
+    """delete() must rebuild without the id instead of warning and keeping it.
+
+    The removed id must vanish from the index, the id<->idx mappings and the
+    metadata store; unknown ids and unknown collections are no-ops.
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+
+    temp_vector_db.delete(["doc1"], collection="default")
+
+    assert temp_vector_db.index.ntotal == 1
+    assert temp_vector_db.id_to_idx_mappings["default"] == {"doc2": 0}
+    assert temp_vector_db.idx_to_id_mappings["default"] == {0: "doc2"}
+    assert "doc1" not in temp_vector_db.metadata_stores["default"]
+    results = temp_vector_db.search(sample_vectors[1], top_k=10, collection="default")
+    assert [r.id for r in results] == ["doc2"]
+
+    # Unknown ids and unknown collections must not raise or disturb the index.
+    temp_vector_db.delete(["ghost"], collection="default")
+    temp_vector_db.delete(["doc2"], collection="missing")
+    assert temp_vector_db.index.ntotal == 1
+    assert [r.id for r in temp_vector_db.search(sample_vectors[1], top_k=10, collection="default")] == ["doc2"]

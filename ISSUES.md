@@ -8,6 +8,22 @@
 
 ---
 
+## Issue 12: vectordb の残存整理 — 生 `collection` ログと rebuild 後のレガシー別名 — **未着手**
+
+**内容:** Issue 11 の `delete()` 成功ログは `sanitize_for_log` で統一したが、
+`app/core/vectordb.py` にはクライアント指定の `collection` を生のまま埋め込む
+ログが残っている（CWE-117 同種。search / delete の not-found 経路は対応済み）。
+また `_rebuild_without_ids` は `self.indices[collection]` を新辞書に差し替えるため、
+`__init__` / `connect` が張るレガシー別名が rebuild 後に陳腐化する
+（2026-09-14 の外部読み手 grep で現行読み手ゼロを確認済み・潜在バグ）。
+
+**タスク:**
+- [ ] `_create_collection_index` の "Created FAISS index for collection" info（:265）
+- [ ] `upsert` の "Upserted ... into collection" info（:474）
+- [ ] `save` の "Saved FAISS index for collection" info ×2（:621, :643）
+- [ ] rebuild 後に `self.id_to_idx` / `self.idx_to_id` 別名を貼り直すか、読み手のない
+      レガシー別名を廃止する
+
 ## Issue 11: upsert 同一バッチ内の重複 ID が二重登録される／`delete()` が未対応のまま — **完了・2026-09-14**
 
 **内容:** Issue 10 の修正（`6a00e77`）はインデックス既存 ID との照合のみで、

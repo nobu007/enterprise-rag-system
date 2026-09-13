@@ -831,3 +831,50 @@ def test_delete_survives_save_and_reload(temp_vector_db, sample_vectors, sample_
     results = reloaded.search(sample_vectors[0], top_k=10, collection="default")
     assert [r.id for r in results] == ["doc2"]
     assert results[0].text == sample_metadata[1]["text"]
+
+
+class TestDeleteLogInjectionVectorDB:
+    """CWE-117: the delete() success log must neutralise a client-controlled collection.
+
+    Sibling of TestCollectionLogInjectionVectorDB: a CR/LF-bearing collection
+    name reaching the "Deleted N vectors from collection '...'" info line would
+    forge a fake subsequent log line. The not-found warning on the same path
+    was already sanitised; the success line interpolated the raw name.
+    """
+
+    def test_collection_crlf_neutralised_in_delete_log(self, temp_vector_db):
+        vectordb_logger = logging.getLogger("app.core.vectordb")
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(record)
+
+        handler = _Capture(logging.DEBUG)
+        vectordb_logger.addHandler(handler)
+        vectordb_logger.setLevel(logging.DEBUG)
+        try:
+            temp_vector_db.upsert(
+                vectors=[[1.0, 0.0]],
+                ids=["x"],
+                metadata=[{"text": "v"}],
+                collection="ev\nil",
+            )
+            temp_vector_db.delete(["x"], collection="ev\nil")
+        finally:
+            vectordb_logger.removeHandler(handler)
+
+        deleted_msgs = [
+            r.getMessage()
+            for r in captured
+            if "Deleted" in r.getMessage() and "from collection" in r.getMessage()
+        ]
+        assert deleted_msgs, "delete success log was not emitted"
+        msg = deleted_msgs[0]
+        # No raw CR/LF survives -> the forged line cannot start.
+        assert "\n" not in msg
+        assert "\r" not in msg
+        # Escaped form is present -> value preserved, only log rep changed.
+        assert "ev\\nil" in msg
+        # The delete itself still worked on the CRLF-named collection.
+        assert temp_vector_db.indices["ev\nil"].ntotal == 0

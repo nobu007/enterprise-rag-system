@@ -549,7 +549,11 @@ class FAISSVectorDB(VectorDB):
             return
 
         self._rebuild_without_ids(collection, remove_ids)
-        logger.info(f"Deleted {len(remove_ids)} vectors from collection '{collection}'")
+        # ``collection`` is client-controlled; keep the success line consistent
+        # with the sanitised not-found warning above (CWE-117).
+        logger.info(
+            f"Deleted {len(remove_ids)} vectors from collection '{sanitize_for_log(collection)}'"
+        )
 
     def get_stats(self) -> Dict[str, Any]:
         """Get FAISS index statistics for all collections"""

@@ -341,3 +341,47 @@ def test_vector_db_collection_persistence(temp_vector_db, sample_vectors, sample
     )
     assert len(results2) == 1
     assert results2[0].id == "doc2"
+
+
+def test_vector_db_default_collection_persistence(temp_vector_db, sample_vectors, sample_metadata):
+    """The default collection must survive a save -> connect round trip.
+
+    connect() loads the JSON metadata into the per-collection stores, not
+    just the legacy attributes. Otherwise a follow-up upsert into "default"
+    raises KeyError ("default" is already in self.indices so the on-demand
+    bootstrap in _get_or_create_collection is skipped) and search silently
+    returns no results.
+    """
+
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["doc1"],
+        metadata=[sample_metadata[0]],
+        collection="default"
+    )
+
+    # Save the index (writes the JSON metadata format)
+    temp_vector_db.save(temp_vector_db.index_path)
+
+    # Create a new VectorDB instance and load from disk
+    new_db = FAISSVectorDB(index_path=temp_vector_db.index_path)
+    new_db.connect()
+
+    # Follow-up upsert into the loaded default collection must not KeyError
+    new_db.upsert(
+        vectors=[sample_vectors[1]],
+        ids=["doc2"],
+        metadata=[sample_metadata[1]],
+        collection="default"
+    )
+
+    # Both documents must be searchable with their metadata intact
+    results = new_db.search(
+        query_vector=sample_vectors[0],
+        top_k=5,
+        collection="default"
+    )
+    assert {r.id for r in results} == {"doc1", "doc2"}
+    by_id = {r.id: r for r in results}
+    assert by_id["doc1"].text == sample_metadata[0]["text"]
+    assert by_id["doc2"].text == sample_metadata[1]["text"]

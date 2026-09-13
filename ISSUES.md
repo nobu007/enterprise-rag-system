@@ -69,3 +69,24 @@ sys.path 前方に外部の正規 `scripts` パッケージ（例: ハーネス�
 - [x] `scripts/__init__.py` を追加し、リポジトリローカルの正規パッケージが外部 `scripts` より優先されるようにする
 - [x] `import scripts.ingest` が本リポジトリ配下で解決されることを保証する回帰テストを追加する
 - ✅ 2026-09-14 run: 修正は `cbf193c` で着地済み（回帰テストを `tests/unit/test_ingest_script.py` に追加、README の CLI フラグ誤記 `--source-path`→`--source` も同時修正）。`PYTHONPATH=/home/jinno/ai-hub`・合成 shadow ツリー・unset の 3 条件で **266 passed / 0 failed** を確認。
+
+## Issue 9: `connect()` 後の default コレクションへの upsert が KeyError・search が無音に 0 件 — **完了・2026-09-14**
+
+**内容:** `FAISSVectorDB.connect()` の JSON メタデータ読み込み分支が
+`metadata_store` 等のレガシー属性にのみ格納し、pickle 分支
+（`metadata_stores["default"]` 等を初期化）と異なりコレクションごとの
+辞書に格納していなかった。ディスク上の既存インデックスに `connect()` した
+fresh インスタンスでは
+
+- `upsert(collection="default")` → `"default"` は `self.indices` に存在するため
+  `_get_or_create_collection` のブートストラップが skip され `KeyError: 'default'`
+- `search(collection="default")` → `idx_to_id` が空のため全ヒットが無音に棄却される（サイレントデータロス）
+
+という不整合が残っていた（2026-09-14 の再現スクリプトで確認。`default` は
+ingest API が collection 未指定時に書き込む先で、lifespan・`/stats` が
+`connect()` を呼ぶため現実の経路）。
+
+**タスク:**
+- [x] JSON 分支にも pickle 分支と同じ 3 行（`metadata_stores` / `id_to_idx_mappings` / `idx_to_id_mappings` への格納）を追加する
+- [x] default コレクションの save → connect ラウンドトリップ後の upsert・search（metadata/text 含む）を検証する回帰テストを追加する
+- ✅ 2026-09-14 run: `app/core/vectordb.py` 修正 + `tests/unit/test_vectordb_collections.py` に `test_vector_db_default_collection_persistence` 追加。修正前は当該テストが `KeyError: 'default'` で失敗することを確認済み。**278 passed / 0 failed**・`compileall` クリア。

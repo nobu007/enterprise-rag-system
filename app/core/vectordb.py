@@ -290,6 +290,16 @@ class FAISSVectorDB(VectorDB):
                         self.metadata_store = data['metadata_store']
                         self.id_to_idx = data['id_to_idx']
                         self.idx_to_id = {int(k): v for k, v in data['idx_to_id'].items()}
+
+                    # Initialize metadata stores for default collection.
+                    # Without this, upsert(collection="default") raises
+                    # KeyError ('default' is already in self.indices so the
+                    # on-demand bootstrap in _get_or_create_collection is
+                    # skipped) and search(collection="default") silently
+                    # drops every hit (idx_to_id lookup finds nothing).
+                    self.metadata_stores["default"] = self.metadata_store
+                    self.id_to_idx_mappings["default"] = self.id_to_idx
+                    self.idx_to_id_mappings["default"] = self.idx_to_id
                 elif os.path.exists(metadata_pkl_path):
                     import pickle
                     logger.warning(f"Loading legacy pickle metadata: {metadata_pkl_path}. Will be saved as JSON on next save.")

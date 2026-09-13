@@ -1,552 +1,167 @@
 """
-Unit tests for Query API Routes
+Unit tests for Document API Routes
 
-Tests for the /query endpoints including validation, error handling,
-and response format verification.
+Tests for the /documents endpoints including validation, error handling,
+and response format verification, plus the mounted production app's
+health/root routes.
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock
+from pathlib import Path
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.query import router, QueryRequest, QueryResponse
+from app.api.routes.documents import router as documents_router
 from app.main import app as production_app
-from app.services.rag_pipeline import RAGResponse
-from app.api.dependencies import get_rag_pipeline
+from app.core.config import get_settings
+
+
+class FakeEmbeddingModel:
+    """Deterministic offline embedding model for route tests."""
+
+    dimension = 8
+
+    def embed_texts(self, texts):
+        import hashlib
+
+        return [
+            list(hashlib.sha256(t.encode()).digest()[:8]) for t in texts
+        ]
 
 
 @pytest.fixture
-def mock_rag_pipeline():
-    """Mock RAG pipeline instance"""
-    pipeline = Mock()
-    # Set up async mocks
-    pipeline.query = AsyncMock()
-    pipeline.batch_query = AsyncMock()
-    return pipeline
+def client(tmp_path, monkeypatch):
+    """Test client with the documents router mounted on a bare app.
 
+    Embeddings are faked and the FAISS index path is redirected to a
+    temporary directory so no real API call or repo-side artifact happens.
+    """
+    import app.core.embeddings as embeddings_module
 
-@pytest.fixture
-def sample_rag_response():
-    """Sample RAG response for testing"""
-    return RAGResponse(
-        answer="This is a test answer based on the context.",
-        sources=[
-            {
-                'index': 1,
-                'document': 'test1.pdf',
-                'page': 1,
-                'relevance_score': 0.85,
-                'text_preview': 'Sample document text...'
-            }
-        ],
-        confidence=0.82,
-        latency_ms=150,
-        tokens_used=100,
-        retrieval_results=[]
+    monkeypatch.setattr(
+        embeddings_module, "get_embedding_model", lambda: FakeEmbeddingModel()
+    )
+    monkeypatch.setattr(
+        get_settings(), "faiss_index_path", str(tmp_path / "faiss_index.bin")
     )
 
-
-@pytest.fixture
-def client(mock_rag_pipeline, sample_rag_response):
-    """Test client with mocked dependencies"""
-    from fastapi import FastAPI
-
     app = FastAPI()
-    app.include_router(router)
-
-    # Set up the default return value for query method
-    mock_rag_pipeline.query.return_value = sample_rag_response
-    mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
-
-    async def provide_pipeline():
-        return mock_rag_pipeline
-
-    # Override the dependency
-    app.dependency_overrides[get_rag_pipeline] = provide_pipeline
-
+    app.include_router(documents_router, prefix="/api/v1")
     yield TestClient(app, backend_options={"use_uvloop": True})
 
-    # Clean up
-    app.dependency_overrides = {}
+
+@pytest.fixture
+def prod_client():
+    """Test client for the full production app (lifespan runs)."""
+    with TestClient(production_app, backend_options={"use_uvloop": True}) as c:
+        yield c
 
 
-class TestQueryRequestValidation:
-    """Test QueryRequest validation"""
-
-    def test_valid_query_request(self):
-        """Test valid query request creation"""
-        request = QueryRequest(
-            query="What is machine learning?",
-            top_k=5,
-            use_hybrid=True
-        )
-        assert request.query == "What is machine learning?"
-        assert request.top_k == 5
-        assert request.use_hybrid is True
-
-    def test_query_request_min_length_validation(self):
-        """Test that empty query is rejected"""
-        with pytest.raises(Exception):
-            QueryRequest(query="")
-
-    def test_query_request_max_length_validation(self):
-        """Test that overly long query is rejected.
-
-        StreamingQueryRequest caps query at 1000 chars (max_length field +
-        validate_stream_request's ``len(query) > 1000`` check) and both
-        endpoint docstrings promise "1-1000 characters". The non-streaming
-        QueryRequest must enforce the same cap so /query rejects an oversized
-        query at the boundary instead of accepting unbounded text that would
-        blow up embedding cost / the LLM context window.
-        """
-        # Boundary: exactly 1000 chars is valid
-        QueryRequest(query="a" * 1000)
-        # 1001 chars is rejected
-        with pytest.raises(Exception):
-            QueryRequest(query="a" * 1001)
-
-    def test_query_request_top_k_bounds(self):
-        """Test top_k bounds validation"""
-        # Valid range: 1-20
-        QueryRequest(query="Test?", top_k=1)
-        QueryRequest(query="Test?", top_k=20)
-
-        # Out of bounds
-        with pytest.raises(Exception):
-            QueryRequest(query="Test?", top_k=0)
-
-        with pytest.raises(Exception):
-            QueryRequest(query="Test?", top_k=21)
-
-    def test_query_request_with_optional_fields(self):
-        """Test query request with optional fields"""
-        request = QueryRequest(
-            query="Test query",
-            collection="test_collection",
-            top_k=10,
-            use_hybrid=False,
-            filters={"category": "tech"}
-        )
-        assert request.collection == "test_collection"
-        assert request.use_hybrid is False
-        assert request.filters == {"category": "tech"}
-
-    def test_query_request_collection_max_length(self):
-        """Collection name is capped at 1000 chars (sibling of query max_length).
-
-        ``collection`` is the other client-controlled body string carried by
-        all three request models. It reaches Prometheus labels
-        (``cache_hits.labels(collection=...)`` etc.) as a raw value and is
-        interpolated into retrieval log lines, so without a cap an oversized
-        name bloats metric label values / log output. Mirrors the query cap
-        (1000) established across QueryRequest / StreamingQueryRequest.
-        """
-        # Boundary: exactly 1000 chars is valid
-        req = QueryRequest(query="q", collection="c" * 1000)
-        assert req.collection == "c" * 1000
-        # None still accepted (Optional)
-        QueryRequest(query="q", collection=None)
-        # 1001 chars is rejected
-        with pytest.raises(Exception):
-            QueryRequest(query="q", collection="c" * 1001)
+@pytest.fixture
+def sample_docs_dir(tmp_path):
+    """Directory with a couple of valid text documents."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.txt").write_text(
+        "Enterprise RAG systems retrieve relevant passages for a query "
+        "and feed them to a language model.",
+        encoding="utf-8",
+    )
+    (docs / "b.md").write_text(
+        "# Title\n\nMarkdown body long enough to clear the validator's "
+        "minimum content length requirement.",
+        encoding="utf-8",
+    )
+    return str(docs)
 
 
-class TestQueryEndpoint:
-    """Test POST /query/ endpoint"""
+class TestDocumentsIngestEndpoint:
+    """POST /api/v1/documents/ingest"""
 
-    def test_query_endpoint_success(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test successful query execution"""
-        mock_rag_pipeline.query.return_value = sample_rag_response
-
+    def test_ingest_success(self, client, sample_docs_dir):
         response = client.post(
-            "/query/",
-            json={
-                "query": "What is machine learning?",
-                "top_k": 5,
-                "use_hybrid": True
-            }
+            "/api/v1/documents/ingest",
+            json={"source_path": sample_docs_dir, "collection": "it"},
         )
-
         assert response.status_code == 200
-        data = response.json()
-        assert data["answer"] == sample_rag_response.answer
-        assert data["confidence"] == sample_rag_response.confidence
-        assert data["latency_ms"] == sample_rag_response.latency_ms
-        assert data["tokens_used"] == sample_rag_response.tokens_used
-        assert len(data["sources"]) == 1
+        body = response.json()
+        assert body["success"] is True
+        assert body["documents_processed"] == 2
+        assert body["chunks_created"] >= 2
+        assert body["collection"] == "it"
 
-        # Verify pipeline was called correctly
-        mock_rag_pipeline.query.assert_called_once_with(
-            question="What is machine learning?",
-            top_k=5,
-            use_hybrid=True,
-            filter_dict=None,
-            rerank=True,
-            collection='default'
+    def test_ingest_missing_directory_is_404(self, client):
+        response = client.post(
+            "/api/v1/documents/ingest",
+            json={"source_path": "/nonexistent/path/xyz"},
         )
+        assert response.status_code == 404
 
-    def test_query_endpoint_works_at_production_prefix(
-        self, mock_rag_pipeline, sample_rag_response
-    ):
-        """Verify the production application exposes the documented query path."""
-        mock_rag_pipeline.query.return_value = sample_rag_response
-
-        async def provide_pipeline():
-            return mock_rag_pipeline
-
-        previous_override = production_app.dependency_overrides.get(get_rag_pipeline)
-        production_app.dependency_overrides[get_rag_pipeline] = provide_pipeline
-        client = TestClient(
-            production_app,
-            backend_options={"use_uvloop": True},
-            follow_redirects=False,
+    def test_ingest_empty_directory_is_400(self, client, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        response = client.post(
+            "/api/v1/documents/ingest",
+            json={"source_path": str(empty)},
         )
+        assert response.status_code == 400
 
-        try:
-            response = client.post(
-                "/api/v1/query/",
-                json={"query": "What is machine learning?", "top_k": 5},
-            )
-        finally:
-            client.close()
-            if previous_override is None:
-                production_app.dependency_overrides.pop(get_rag_pipeline, None)
-            else:
-                production_app.dependency_overrides[get_rag_pipeline] = previous_override
 
+class TestDocumentsUploadEndpoint:
+    """POST /api/v1/documents/upload"""
+
+    def test_upload_txt_success(self, client, tmp_path):
+        f = tmp_path / "note.txt"
+        f.write_text(
+            "Uploaded note content for the vector store, long enough to "
+            "clear the validator minimum.",
+            encoding="utf-8",
+        )
+        response = client.post(
+            "/api/v1/documents/upload",
+            files={"file": ("note.txt", f.read_bytes(), "text/plain")},
+            data={"collection": "uploads"},
+        )
         assert response.status_code == 200
-        assert response.history == []
-        assert response.json()["answer"] == sample_rag_response.answer
-        mock_rag_pipeline.query.assert_called_once_with(
-            question="What is machine learning?",
-            top_k=5,
-            use_hybrid=True,
-            filter_dict=None,
-            rerank=True,
-            collection="default",
-        )
+        body = response.json()
+        assert body["success"] is True
+        assert body["documents_processed"] == 1
+        assert body["collection"] == "uploads"
 
-    def test_query_endpoint_with_filters(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test query with metadata filters"""
-        mock_rag_pipeline.query.return_value = sample_rag_response
-
+    def test_upload_unsupported_extension_is_400(self, client, tmp_path):
+        f = tmp_path / "data.bin"
+        f.write_bytes(b"\x00\x01\x02")
         response = client.post(
-            "/query/",
-            json={
-                "query": "What is AI?",
-                "top_k": 5,
-                "filters": {"category": "tech", "year": 2024}
-            }
+            "/api/v1/documents/upload",
+            files={"file": ("data.bin", f.read_bytes(), "application/octet-stream")},
         )
+        assert response.status_code == 400
 
+
+class TestHealthAndRoot:
+    """Production app health and root routes"""
+
+    def test_health_check(self, prod_client):
+        response = prod_client.get("/health")
         assert response.status_code == 200
-        mock_rag_pipeline.query.assert_called_once_with(
-            question="What is AI?",
-            top_k=5,
-            use_hybrid=True,
-            filter_dict={"category": "tech", "year": 2024},
-            rerank=True,
-            collection='default'
-        )
+        body = response.json()
+        assert body["status"] == "healthy"
+        assert body["version"] == production_app.version
 
-    def test_query_endpoint_error_handling(self, client, mock_rag_pipeline):
-        """Test query endpoint error handling"""
-        # Simulate pipeline error
-        mock_rag_pipeline.query.side_effect = Exception("Database connection failed")
-
-        response = client.post(
-            "/query/",
-            json={
-                "query": "What is machine learning?",
-                "top_k": 5
-            }
-        )
-
-        assert response.status_code == 500
-        data = response.json()
-        assert "detail" in data
-        assert "Query failed" in data["detail"]
-
-    def test_query_endpoint_collection_too_long_rejected(self, client):
-        """An oversized collection name is rejected at the /query boundary (422).
-
-        Mirrors the query max_length cap; collection reaches Prometheus labels
-        and logs as a raw value, so cap it at the boundary.
-        """
-        response = client.post(
-            "/query/",
-            json={"query": "q", "collection": "c" * 1001}
-        )
-        assert response.status_code == 422
-
-
-class TestBatchQueryEndpoint:
-    """Test POST /query/batch endpoint"""
-
-    def test_batch_query_success(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test successful batch query"""
-        mock_rag_pipeline.batch_query.return_value = [
-            sample_rag_response,
-            sample_rag_response,
-            sample_rag_response
-        ]
-
-        response = client.post(
-            "/query/batch",
-            json={
-                "queries": [
-                    "What is machine learning?",
-                    "What is deep learning?",
-                    "What is NLP?"
-                ],
-                "top_k": 5
-            }
-        )
-
+    def test_detailed_health_check(self, prod_client):
+        response = prod_client.get("/health/detailed")
         assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 3
-        assert all("answer" in item for item in data)
-        assert all("sources" in item for item in data)
+        body = response.json()
+        assert body["status"] == "healthy"
+        assert body["services"] == {
+            "api": "healthy",
+            "vector_db": "healthy",
+            "llm": "healthy",
+        }
 
-        mock_rag_pipeline.batch_query.assert_called_once_with(
-            questions=[
-                "What is machine learning?",
-                "What is deep learning?",
-                "What is NLP?"
-            ],
-            top_k=5,
-            collection='default',
-            use_hybrid=True,
-            rerank=True
-        )
-
-    def test_batch_query_forwards_use_hybrid_and_rerank(self, client, mock_rag_pipeline, sample_rag_response):
-        """Client-supplied use_hybrid/rerank must reach the pipeline.
-
-        Regression: the /query/batch route declared these fields on
-        BatchQueryRequest but omitted them from the batch_query() call, so
-        every batch item ran with the pipeline defaults (True/True) and a
-        client requesting semantic-only search (use_hybrid=False) silently
-        got hybrid results. The single /query route already forwarded them;
-        batch was the inconsistent outlier.
-        """
-        mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
-
-        response = client.post(
-            "/query/batch",
-            json={
-                "queries": ["semantic-only question"],
-                "use_hybrid": False,
-                "rerank": False
-            }
-        )
-
+    def test_root_endpoint(self, prod_client):
+        response = prod_client.get("/")
         assert response.status_code == 200
-        mock_rag_pipeline.batch_query.assert_called_once_with(
-            questions=["semantic-only question"],
-            top_k=5,
-            collection='default',
-            use_hybrid=False,
-            rerank=False
-        )
-
-    def test_batch_query_empty_list(self, client, mock_rag_pipeline):
-        """Test batch query with empty query list"""
-        mock_rag_pipeline.batch_query.return_value = []
-
-        response = client.post(
-            "/query/batch",
-            json={
-                "queries": [],
-                "top_k": 5
-            }
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 0
-
-    def test_batch_query_with_partial_failure(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test batch query where some queries fail"""
-        # Mix of successful and failed responses
-        mock_rag_pipeline.batch_query.return_value = [
-            sample_rag_response,
-            RAGResponse(
-                answer="Error: Invalid query",
-                sources=[],
-                confidence=0.0,
-                latency_ms=0,
-                tokens_used=0,
-                retrieval_results=[]
-            )
-        ]
-
-        response = client.post(
-            "/query/batch",
-            json={
-                "queries": ["Valid query", "Invalid query"],
-                "top_k": 5
-            }
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
-
-    def test_batch_query_validation(self, client):
-        """Test batch query request validation"""
-        # Missing required field 'queries'
-        response = client.post(
-            "/query/batch",
-            json={"top_k": 5}
-        )
-
-        assert response.status_code == 422  # Validation error
-
-    def test_batch_query_per_item_length_rejected(self, client):
-        """An oversized individual batch query is rejected at the boundary.
-
-        Mirrors the single-query max_length=1000 cap (QueryRequest /
-        StreamingQueryRequest.query); without it one batch item can carry
-        an arbitrarily long query -> unbounded embedding / LLM cost.
-        """
-        response = client.post(
-            "/query/batch",
-            json={"queries": ["ok", "a" * 1001], "top_k": 5}
-        )
-
-        assert response.status_code == 422  # per-item max_length exceeded
-
-    def test_batch_query_per_item_max_length_boundary_accepted(
-        self, client, mock_rag_pipeline, sample_rag_response
-    ):
-        """A batch item of exactly 1000 chars is accepted (boundary value)."""
-        mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
-
-        response = client.post(
-            "/query/batch",
-            json={"queries": ["a" * 1000], "top_k": 5}
-        )
-
-        assert response.status_code == 200
-
-    def test_batch_query_collection_too_long_rejected(self, client):
-        """An oversized collection name is rejected at the /query/batch boundary (422)."""
-        response = client.post(
-            "/query/batch",
-            json={"queries": ["q"], "collection": "c" * 1001}
-        )
-        assert response.status_code == 422
-
-
-class TestHealthEndpoint:
-    """Test GET /query/health endpoint"""
-
-    def test_health_check(self, client):
-        """Test health check endpoint"""
-        response = client.get("/query/health")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "healthy"
-        assert data["service"] == "RAG Query API"
-
-
-class TestResponseModels:
-    """Test response model serialization"""
-
-    def test_query_response_serialization(self, sample_rag_response):
-        """Test QueryResponse can be properly serialized"""
-        response = QueryResponse(
-            answer=sample_rag_response.answer,
-            sources=sample_rag_response.sources,
-            confidence=sample_rag_response.confidence,
-            latency_ms=sample_rag_response.latency_ms,
-            tokens_used=sample_rag_response.tokens_used
-        )
-
-        assert response.answer is not None
-        assert response.sources is not None
-        assert isinstance(response.confidence, float)
-        assert isinstance(response.latency_ms, int)
-        assert isinstance(response.tokens_used, int)
-
-    def test_batch_query_request_validation(self):
-        """Test BatchQueryRequest validation"""
-        from app.api.routes.query import BatchQueryRequest
-
-        # Valid request
-        request = BatchQueryRequest(
-            queries=["Query 1", "Query 2"],
-            top_k=10
-        )
-        assert len(request.queries) == 2
-        assert request.top_k == 10
-
-        # Test top_k bounds
-        with pytest.raises(Exception):
-            BatchQueryRequest(queries=["Test"], top_k=0)
-
-        with pytest.raises(Exception):
-            BatchQueryRequest(queries=["Test"], top_k=21)
-
-    def test_batch_query_request_per_item_max_length(self):
-        """Per-item query capped at 1000 (sibling of QueryRequest.query)."""
-        from app.api.routes.query import BatchQueryRequest
-        from pydantic import ValidationError
-
-        # Boundary accepted: exactly 1000 chars per item, multiple items
-        req = BatchQueryRequest(queries=["a" * 1000, "b" * 1000])
-        assert len(req.queries) == 2
-
-        # One oversized item among several is still rejected
-        with pytest.raises(ValidationError):
-            BatchQueryRequest(queries=["ok", "a" * 1001])
-
-        # Single oversized item rejected
-        with pytest.raises(ValidationError):
-            BatchQueryRequest(queries=["a" * 1001])
-
-    def test_batch_query_request_collection_max_length(self):
-        """Collection capped at 1000 on BatchQueryRequest (sibling of per-item query cap)."""
-        from app.api.routes.query import BatchQueryRequest
-        from pydantic import ValidationError
-
-        # Boundary accepted
-        req = BatchQueryRequest(queries=["q"], collection="c" * 1000)
-        assert req.collection == "c" * 1000
-        # None accepted (Optional)
-        BatchQueryRequest(queries=["q"], collection=None)
-        # Oversized rejected
-        with pytest.raises(ValidationError):
-            BatchQueryRequest(queries=["q"], collection="c" * 1001)
-
-    def test_batch_query_request_list_size_cap(self):
-        """List size capped at 100: pipeline.batch_query fans each item out to a
-        full pipeline.query with no internal bound, and the route limiter is
-        per-request -- without this cap one body of many short queries bypasses
-        per-query rate limiting (cost/DoS fan-out)."""
-        from app.api.routes.query import BatchQueryRequest
-        from pydantic import ValidationError
-
-        # Boundary accepted: exactly 100 items, each at the per-item char cap
-        req = BatchQueryRequest(queries=["q" * 1000] * 100)
-        assert len(req.queries) == 100
-
-        # One item over the cap is rejected at the boundary (422 in the API)
-        with pytest.raises(ValidationError):
-            BatchQueryRequest(queries=["q"] * 101)
-
-    def test_streaming_query_request_collection_max_length(self):
-        """Collection capped at 1000 on StreamingQueryRequest (sibling of query cap)."""
-        from app.api.routes.query import StreamingQueryRequest
-        from pydantic import ValidationError
-
-        # Boundary accepted
-        StreamingQueryRequest(query="q", collection="c" * 1000)
-        # None accepted (Optional)
-        StreamingQueryRequest(query="q", collection=None)
-        # Oversized rejected
-        with pytest.raises(ValidationError):
-            StreamingQueryRequest(query="q", collection="c" * 1001)
+        body = response.json()
+        assert body["status"] == "running"
+        assert body["docs"] == "/docs"

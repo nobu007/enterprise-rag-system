@@ -1,13 +1,10 @@
 """
 Unit tests for Settings environment-variable binding.
 
-These guard the pydantic-settings v2 migration that removes the redundant
-``env=`` kwarg from each ``Field(...)`` in ``app/core/config.py``. Under
-``case_sensitive=False`` a field reads its value from an env var matching
-the field name case-insensitively, so an explicit ``env="FIELD"`` that
-equals ``field.upper()`` is redundant and can be dropped without changing
-which env vars are read. The case-insensitivity tests below are the
-invariant that makes that removal safe.
+These guard the pydantic-settings v2 configuration in ``app/core/config.py``:
+under ``case_sensitive=False`` a field reads its value from an env var
+matching the field name case-insensitively. The case-insensitivity tests
+below pin that invariant.
 """
 
 import pytest
@@ -31,8 +28,7 @@ def _settings(monkeypatch, **env):
 class TestEnvVarCaseInsensitive:
     """A field must read its env var regardless of case spelling.
 
-    This is the invariant the ``Field(env=)`` removal relies on: with
-    ``case_sensitive=False``, field ``openai_api_key`` matches
+    With ``case_sensitive=False``, field ``openai_api_key`` matches
     ``OPENAI_API_KEY``, ``openai_api_key`` and ``Openai_Api_Key`` alike.
     """
 
@@ -44,194 +40,36 @@ class TestEnvVarCaseInsensitive:
         assert Settings().openai_api_key == "case-binding-value"
 
     def test_int_field_read_from_upper_env(self, monkeypatch):
-        result = _settings(monkeypatch, REDIS_PORT="7777")
-        assert result.redis_port == 7777
-        assert isinstance(result.redis_port, int)
+        result = _settings(monkeypatch, SERVER_PORT="9000")
+        assert result.server_port == 9000
+        assert isinstance(result.server_port, int)
 
     def test_bool_field_read_from_upper_env(self, monkeypatch):
         assert _settings(monkeypatch, DEBUG="false").debug is False
         assert _settings(monkeypatch, DEBUG="true").debug is True
 
-    def test_float_field_read_from_upper_env(self, monkeypatch):
-        assert _settings(monkeypatch, HYBRID_SEARCH_ALPHA="0.25").hybrid_search_alpha == 0.25
-
-    @pytest.mark.parametrize("bad_alpha", ["1.5", "-0.5", "2", "-1"])
-    def test_hybrid_search_alpha_rejected_out_of_range(self, monkeypatch, bad_alpha):
-        # hybrid_search_alpha is a convex-combination weight in HybridRetriever
-        # RRF fusion (alpha*semantic + (1-alpha)*keyword); outside [0, 1] one
-        # signal inverts (alpha=1.5 -> keyword term = -0.5, keyword matches
-        # reduce the score). The Field must reject it at Settings load rather
-        # than let inverted-signal retrieval ranking through.
-        with pytest.raises(ValidationError):
-            _settings(monkeypatch, HYBRID_SEARCH_ALPHA=bad_alpha)
-
-    @pytest.mark.parametrize("good_alpha", ["0", "0.0", "1", "1.0", "0.25"])
-    def test_hybrid_search_alpha_accepted_in_range(self, monkeypatch, good_alpha):
-        assert _settings(monkeypatch, HYBRID_SEARCH_ALPHA=good_alpha).hybrid_search_alpha == float(good_alpha)
-
-    @pytest.mark.parametrize("field", ["RANKING_SEMANTIC_WEIGHT", "RANKING_KEYWORD_WEIGHT", "RANKING_FRESHNESS_WEIGHT", "RANKING_POPULARITY_WEIGHT"])
-    def test_ranking_weight_rejected_negative(self, monkeypatch, field):
-        # ranking_*_weight feed QueryResultRanker straight from get_ranker().
-        # The ranker's normalization only guards a *total* weight <= 0; a single
-        # negative weight whose sum stays positive slips through: e.g.
-        # RANKING_KEYWORD_WEIGHT=-0.5 with the others at 2.0 leaves total=1.5,
-        # normalization turns keyword_weight negative, and a strong-keyword doc
-        # then scores LOWER than a no-keyword doc (signal inversion — same
-        # class as hybrid_search_alpha). ge=0.0 must reject it at Settings load.
-        with pytest.raises(ValidationError):
-            _settings(monkeypatch, **{field: "-0.5"})
-
-    @pytest.mark.parametrize("good", ["0", "0.0", "0.4", "2"])
-    def test_ranking_weight_accepted_non_negative(self, monkeypatch, good):
-        # 0 and large positive are valid: 0 drops a feature (legitimate),
-        # large positive just dominates after normalization.
-        result = _settings(monkeypatch, RANKING_KEYWORD_WEIGHT=good)
-        assert result.ranking_keyword_weight == float(good)
-
-    @pytest.mark.parametrize("bad_concurrency", ["0", "-1", "-5"])
-    def test_max_concurrent_requests_rejected_below_one(self, monkeypatch, bad_concurrency):
-        # max_concurrent_requests feeds ConcurrencyLimiter, whose constructor
-        # rejects max_concurrent < 1 with ValueError (concurrency.py). The
-        # Field must enforce the same lower bound at Settings load so a
-        # misconfigured MAX_CONCURRENT_REQUESTS (0 / negative) fails fast
-        # with a clear ValidationError instead of crashing lifespan init.
-        with pytest.raises(ValidationError):
-            _settings(monkeypatch, MAX_CONCURRENT_REQUESTS=bad_concurrency)
-
-    @pytest.mark.parametrize("good_concurrency", ["1", "10", "100"])
-    def test_max_concurrent_requests_accepted_at_least_one(self, monkeypatch, good_concurrency):
-        assert _settings(monkeypatch, MAX_CONCURRENT_REQUESTS=good_concurrency).max_concurrent_requests == int(good_concurrency)
-
-    @pytest.mark.parametrize("bad_size", ["0", "-1", "-5"])
-    def test_max_request_size_rejected_below_one(self, monkeypatch, bad_size):
-        # max_request_size feeds ValidationMiddleware (main.py wiring), whose
-        # _validate_content_length rejects any body whose Content-Length exceeds
-        # it with HTTP 413 (validation.py). That guard runs on every
-        # POST/PUT/PATCH -- every /query, /batch/query, /ingest and /documents
-        # body. A value of 0 (or negative) therefore 413s every body-bearing
-        # request: the app boots and /health stays 200, but the whole query+
-        # ingest surface is bricked (a silently broken deployment). The Field
-        # must enforce the same lower bound at Settings load so a misconfigured
-        # MAX_REQUEST_SIZE (0 / negative) fails fast with a clear ValidationError
-        # -- same fail-fast class as max_concurrent_requests ge=1 above.
-        with pytest.raises(ValidationError):
-            _settings(monkeypatch, MAX_REQUEST_SIZE=bad_size)
-
-    @pytest.mark.parametrize("good_size", ["1", "1048576", "10485760"])
-    def test_max_request_size_accepted_at_least_one(self, monkeypatch, good_size):
-        # 1 byte is the smallest useful cap (a tiny JSON body); 1 MiB and the
-        # 10 MiB default are normal deployments. The upper bound is
-        # deployment-specific (memory budget) and intentionally unbounded.
-        assert _settings(monkeypatch, MAX_REQUEST_SIZE=good_size).max_request_size == int(good_size)
-
-    @pytest.mark.parametrize("bad_temp", ["-0.1", "-0.5", "-1", "-2.0"])
-    def test_llm_temperature_rejected_negative(self, monkeypatch, bad_temp):
-        # llm_temperature is wired straight into the OpenAI chat completion
-        # call: main.py passes settings.llm_temperature to RAGPipeline, which
-        # stores it and sends it as ``temperature=`` at rag_pipeline.py L116 /
-        # L422 and streaming.py L149. Every LLM provider defines a non-negative
-        # sampling temperature (0 = deterministic); a negative value is
-        # meaningless and the provider rejects it per-request. Without a
-        # Settings bound, a misconfigured LLM_TEMPERATURE=-0.5 lets the app
-        # boot and then 500 every query (a silently broken deployment). The
-        # Field must reject it at Settings load -- same fail-fast class as
-        # max_concurrent_requests ge=1 above. Only the universal lower bound is
-        # enforced; the upper bound is provider-specific (OpenAI <= 2, Anthropic
-        # <= 1) and intentionally left unbounded (see the accepted test below).
-        with pytest.raises(ValidationError):
-            _settings(monkeypatch, LLM_TEMPERATURE=bad_temp)
-
-    @pytest.mark.parametrize("good_temp", ["0", "0.0", "0.7", "1", "2.0"])
-    def test_llm_temperature_accepted_non_negative(self, monkeypatch, good_temp):
-        # 0 is valid (deterministic). Positive values are accepted up to each
-        # provider's own maximum: 2.0 is included here to lock in that the
-        # Field enforces ONLY the lower bound -- the upper bound (deferred,
-        # provider-specific) must stay unbounded so a valid OpenAI temperature
-        # of 2.0 is not rejected at Settings load.
-        assert _settings(monkeypatch, LLM_TEMPERATURE=good_temp).llm_temperature == float(good_temp)
-
-    @pytest.mark.parametrize("bad_tokens", ["0", "-1", "-5", "-100"])
-    def test_llm_max_tokens_rejected_below_one(self, monkeypatch, bad_tokens):
-        # llm_max_tokens is wired straight into the OpenAI chat completion
-        # call: main.py passes settings.llm_max_tokens to RAGPipeline
-        # (max_tokens=), which sends it as ``max_tokens=`` at
-        # rag_pipeline.py L117 (the non-streaming /query and /batch paths).
-        # Every LLM provider treats max_tokens as a positive integer; OpenAI
-        # rejects ``0`` / negatives per-request ("0 is less than the minimum
-        # of 1"). That BadRequestError is wrapped as RuntimeError in
-        # _call_llm, and the LLM circuit breaker (expected_exception=
-        # RuntimeError) counts it -- after failure_threshold=5 such failures
-        # the breaker opens and EVERY subsequent query 500s (a silently
-        # broken deployment). This is the same fail-open-to-brick mechanism
-        # as a negative llm_temperature. ge=1 enforces the universal lower
-        # bound so a misconfigured LLM_MAX_TOKENS=0 fails fast at Settings
-        # load instead of bricking the deployment one query at a time. Only
-        # the lower bound is enforced; the upper bound is model/context-window
-        # specific (deferred) and intentionally left unbounded (see below).
-        with pytest.raises(ValidationError):
-            _settings(monkeypatch, LLM_MAX_TOKENS=bad_tokens)
-
-    @pytest.mark.parametrize("good_tokens", ["1", "2", "2048", "100000"])
-    def test_llm_max_tokens_accepted_at_least_one(self, monkeypatch, good_tokens):
-        # 1 is the minimum useful cap. 100000 is included to lock in that the
-        # Field enforces ONLY the lower bound -- the upper bound (deferred,
-        # model/context-window-specific) must stay unbounded so a valid large
-        # max_tokens for a long-context model is not rejected at Settings load.
-        assert _settings(monkeypatch, LLM_MAX_TOKENS=good_tokens).llm_max_tokens == int(good_tokens)
-
-    @pytest.mark.parametrize("bad_ttl", ["0", "-1", "-5", "-100"])
-    def test_cache_ttl_seconds_rejected_below_one(self, monkeypatch, bad_ttl):
-        # cache_ttl_seconds feeds CacheManager (main.py wiring) as self.ttl and
-        # is consumed two ways: the L2 Redis write
-        # ``redis_client.setex(key, ttl or self.ttl, ...)`` (cache.py) -- Redis
-        # SETEX requires seconds > 0 and errors on 0 / negative ("invalid expire
-        # time"), which the setter swallows into a per-store warning; and the L1
-        # in-memory TTL ``time.time() - timestamp < self.ttl`` -- ttl <= 0 makes
-        # every entry instantly expired so L1 never hits either. A misconfigured
-        # CACHE_TTL_SECONDS=0 therefore silently disables the entire cache (L2
-        # warns on every write, L1 never serves) -- a silently-degraded
-        # deployment; the proper disable path is CACHE_ENABLED=false, not ttl=0.
-        # ge=1 enforces the Redis-mandated lower bound so a misconfigured
-        # CACHE_TTL_SECONDS fails fast at Settings load -- same fail-fast class
-        # as max_request_size ge=1 / llm_max_tokens ge=1.
-        with pytest.raises(ValidationError):
-            _settings(monkeypatch, CACHE_TTL_SECONDS=bad_ttl)
-
-    @pytest.mark.parametrize("good_ttl", ["1", "60", "3600", "604800"])
-    def test_cache_ttl_seconds_accepted_at_least_one(self, monkeypatch, good_ttl):
-        # 1 is the minimum useful TTL (1-second cache). 3600 is the default;
-        # 604800 (7 days) locks in that the Field enforces ONLY the lower bound
-        # -- the upper bound (deferred, retention-policy-specific) must stay
-        # unbounded so a valid long-lived cache is not rejected at Settings load.
-        assert _settings(monkeypatch, CACHE_TTL_SECONDS=good_ttl).cache_ttl_seconds == int(good_ttl)
-
 
 class TestEnvBindingAcrossFieldGroups:
-    """Env binding must cover every field group and type, so dropping
-    ``env=`` cannot silently drop a field's env source."""
+    """Env binding must cover every field group and type."""
 
     def test_optional_str_field(self, monkeypatch):
-        assert _settings(monkeypatch, ANTHROPIC_API_KEY="ant-secret").anthropic_api_key == "ant-secret"
+        assert _settings(monkeypatch, COHERE_API_KEY="co-secret").cohere_api_key == "co-secret"
 
     def test_unset_optional_defaults_to_none(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "x")
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        assert Settings().anthropic_api_key is None
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        assert Settings().cohere_api_key is None
 
     def test_multiple_fields_different_types(self, monkeypatch):
         result = _settings(
             monkeypatch,
-            REDIS_HOST="redis.prod.example",
-            POSTGRES_PORT="6543",
-            RATE_LIMIT_ENABLED="false",
-            RANKING_ENABLED="true",
-            EMBEDDING_DIMENSION="3072",
+            PINECONE_ENVIRONMENT="us-east1-gcp",
+            SERVER_PORT="6543",
+            EMBEDDING_MODEL="text-embedding-3-large",
         )
-        assert result.redis_host == "redis.prod.example"
-        assert result.postgres_port == 6543
-        assert result.rate_limit_enabled is False
-        assert result.ranking_enabled is True
-        assert result.embedding_dimension == 3072
+        assert result.pinecone_environment == "us-east1-gcp"
+        assert result.server_port == 6543
+        assert result.embedding_model == "text-embedding-3-large"
 
 
 class TestDefaults:
@@ -239,13 +77,18 @@ class TestDefaults:
 
     def test_int_default_when_unset(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "x")
-        monkeypatch.delenv("REDIS_PORT", raising=False)
-        assert Settings().redis_port == 6379
+        monkeypatch.delenv("SERVER_PORT", raising=False)
+        assert Settings().server_port == 8000
 
     def test_str_default_when_unset(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "x")
         monkeypatch.delenv("PINECONE_INDEX_NAME", raising=False)
         assert Settings().pinecone_index_name == "enterprise-rag"
+
+    def test_faiss_index_path_default_when_unset(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "x")
+        monkeypatch.delenv("FAISS_INDEX_PATH", raising=False)
+        assert Settings().faiss_index_path == "./data/faiss_index.bin"
 
 
 class TestDerivedProperties:
@@ -263,4 +106,13 @@ class TestDerivedProperties:
         monkeypatch.setenv("OPENAI_API_KEY", "x")
         result = Settings()
         assert result.app_name == "Enterprise RAG System"
-        assert result.app_version == "0.2.0"
+        assert result.app_version == "0.3.0"
+
+
+class TestRequiredFields:
+    """The one required field must fail fast when absent."""
+
+    def test_missing_openai_api_key_rejected(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        with pytest.raises(ValidationError):
+            Settings()

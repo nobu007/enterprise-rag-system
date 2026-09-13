@@ -5,7 +5,9 @@ Unit tests for VectorDB multi-collection support
 import pytest
 import tempfile
 import os
+import json
 import logging
+import pickle
 from unittest.mock import Mock, call
 from app.core.vectordb import FAISSVectorDB, PineconeVectorDB
 
@@ -63,6 +65,10 @@ def temp_vector_db():
             os.remove(index_path)
         if os.path.exists(index_path + ".metadata.pkl"):
             os.remove(index_path + ".metadata.pkl")
+        # save() writes JSON since the JSON metadata format landed; without
+        # this the rmdir above silently no-ops and leaks the temp dir.
+        if os.path.exists(index_path + ".metadata.json"):
+            os.remove(index_path + ".metadata.json")
         os.rmdir(temp_dir)
     except Exception:
         pass
@@ -385,3 +391,90 @@ def test_vector_db_default_collection_persistence(temp_vector_db, sample_vectors
     by_id = {r.id: r for r in results}
     assert by_id["doc1"].text == sample_metadata[0]["text"]
     assert by_id["doc2"].text == sample_metadata[1]["text"]
+
+
+def test_vector_db_default_collection_search_after_connect(temp_vector_db, sample_vectors, sample_metadata):
+    """connect() alone must make saved default-collection rows searchable.
+
+    Pins the silent-drop half of the Issue 9 fix independently of upsert:
+    search resolves hits through the per-collection idx_to_id/metadata
+    stores, so a fresh instance whose connect() left them empty returned []
+    for every query instead of raising. With the stores populated, doc1
+    must come back with its metadata even though this instance never
+    upserts anything.
+    """
+
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["doc1"],
+        metadata=[sample_metadata[0]],
+        collection="default"
+    )
+    temp_vector_db.save(temp_vector_db.index_path)
+
+    new_db = FAISSVectorDB(index_path=temp_vector_db.index_path)
+    new_db.connect()
+
+    # Search-only: no upsert primes the stores on this instance.
+    results = new_db.search(
+        query_vector=sample_vectors[0],
+        top_k=5,
+        collection="default"
+    )
+    assert [r.id for r in results] == ["doc1"]
+    assert results[0].text == sample_metadata[0]["text"]
+    assert results[0].metadata["filename"] == sample_metadata[0]["filename"]
+
+
+def test_vector_db_legacy_pickle_metadata_migration(temp_vector_db, sample_vectors, sample_metadata):
+    """Legacy pickle metadata must stay searchable and migrate to JSON on save.
+
+    Covers the sibling branch of the Issue 9 fix: the legacy pickle path
+    must also feed the per-collection stores (search keeps working), and
+    the next save() re-serialises them as JSON so a later instance reads
+    the safe format again.
+    """
+
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["doc1"],
+        metadata=[sample_metadata[0]],
+        collection="default"
+    )
+    temp_vector_db.save(temp_vector_db.index_path)
+
+    # Rewind the on-disk metadata to the legacy pickle layout (int keys,
+    # as pickle.dump preserved them before the JSON format existed).
+    json_path = temp_vector_db.index_path + ".metadata.json"
+    pkl_path = temp_vector_db.index_path + ".metadata.pkl"
+    with open(json_path, encoding="utf-8") as f:
+        legacy = json.load(f)
+    legacy["idx_to_id"] = {int(k): v for k, v in legacy["idx_to_id"].items()}
+    os.remove(json_path)
+    with open(pkl_path, "wb") as f:
+        pickle.dump(legacy, f)
+
+    legacy_db = FAISSVectorDB(index_path=temp_vector_db.index_path)
+    legacy_db.connect()
+
+    results = legacy_db.search(
+        query_vector=sample_vectors[0],
+        top_k=5,
+        collection="default"
+    )
+    assert [r.id for r in results] == ["doc1"]
+
+    # The next save() migrates the metadata to the JSON format and a third
+    # instance reads doc1 back from it.
+    legacy_db.save(legacy_db.index_path)
+    assert os.path.exists(json_path)
+
+    migrated_db = FAISSVectorDB(index_path=temp_vector_db.index_path)
+    migrated_db.connect()
+    results = migrated_db.search(
+        query_vector=sample_vectors[0],
+        top_k=5,
+        collection="default"
+    )
+    assert [r.id for r in results] == ["doc1"]
+    assert results[0].text == sample_metadata[0]["text"]

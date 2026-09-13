@@ -49,4 +49,4 @@
 
 本リポジトリは AI ハーネス検証用に自動生成された機能一式（query/パイプライン/キャッシュ/Celery バッチ/暗号化/テナント/レート制限/メトリクス/UI 等）を保持していたが、現時点で必要なのは**実用 RAG のデータ統合スパイン**（ローダ・パーサ・チャンク分割・バリデーション・埋め込み・ベクトルストア + 最小 Ingest API）のみである。2026-09-13 にそれ以外を削除し、README・テスト・`.concept/` を新しい構成に再ベースラインした。同日の Issue 6 修正（CLI ingest へのバリデーションゲート適用）を経て `.venv310` で **262 passed / 0 failed**。
 
-自律 run の候補は `ISSUES.md` の先頭未完了項目（現在は Issue 7: `collection` 引数が ABC/Pinecone の `upsert` に存在しない）。以後の run は LOOP.md の優先順に従う。この方向修正で収束ストリークを一旦解除とする。
+自律 run の候補は `ISSUES.md` の先頭未完了項目（**2026-09-13 午後に Issue 7 も完了** — `collection` が ABC/Pinecone/CLI で伝播し、**265 passed / 0 failed**）。`ISSUES.md` の項目はすべて完了したため、以後の run は LOOP.md の優先順（ソース内 TODO/FIXME〔現存 0 件〕→ README/docs と `app/` の不一致）に従い、候補がなければ中断レポートでよい。

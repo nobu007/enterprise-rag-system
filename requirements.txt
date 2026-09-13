@@ -3,87 +3,34 @@ python-dotenv==1.0.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
-# LLM & AI Frameworks
-# 2026-09-11: dropped langchain/langchain-community/langchain-openai/
-# langchain-google-genai/langchain-anthropic and anthropic — none are
-# imported anywhere in app/ or tests/ (only a config field is named
-# anthropic_api_key), and the pins were mutually unsatisfiable:
-# langchain-anthropic==0.0.4 never existed on PyPI (it aborted
-# `pip install -r requirements.txt` — and therefore CI — for every
-# dependency after it), and langchain-anthropic 0.1.0 requires
-# anthropic>=0.16 while this file pinned 0.8.1.
+# LLM & Embeddings
 openai==1.10.0
 cohere==4.40
 
-# Vector Databases
+# Vector Databases (lazy-imported by app/core/vectordb.py)
 pinecone-client==3.0.0
-weaviate-client==3.26.0
 faiss-cpu==1.7.4
-chromadb==0.4.22
+numpy
 
-# Document Processing
-unstructured==0.11.0
+# Document Processing (lazy-imported by parser/loader for PDF + table extraction)
 pypdf==4.0.1
 pdfplumber>=0.10.0
-python-docx==1.1.0
-markdown==3.5.1
-beautifulsoup4==4.12.2
-pandoc==2.3
-
-# Embeddings & Search
-sentence-transformers==2.2.2
-rank-bm25==0.2.2
-
-# Graph Processing
-networkx>=3.0,<4.0
-scipy>=1.9.0,<2.0
 
 # Web Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
-pydantic[email]==2.5.0
 
-# UI
-streamlit==1.30.0
-plotly==5.18.0
-pandas==2.1.4
-
-# Caching & Performance
-redis==5.0.1
+# HTTP client (fastapi TestClient)
 httpx==0.26.0
-asyncio==3.4.3
-
-# Database
-asyncpg==0.29.0
-
-# Monitoring & Observability
-langsmith==0.0.77
-arize-phoenix==2.0.0
-prometheus-client==0.19.0
-prometheus-fastapi-instrumentator==6.0.0
 
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.23.2
 pytest-cov==4.1.0
-httpx==0.26.0
 
 # Development Tools
 black==23.12.1
 flake8==7.0.0
 mypy==1.8.0
 pre-commit==3.6.0
-
-# Utils
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-tenacity==8.2.3
-email-validator>=2.0.0
-
-# Rate Limiting
-slowapi>=0.1.9
-
-# Batch Processing with Celery
-celery>=5.3.0
-redis>=5.0.0

@@ -10,7 +10,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from app.core.logging_config import get_logger, sanitize_for_log
-from app.core import metrics
 
 
 logger = get_logger(__name__)
@@ -383,9 +382,6 @@ class FAISSVectorDB(VectorDB):
             metadata_store[id_] = meta
 
         logger.info(f"Upserted {len(vectors)} vectors into collection '{collection}'")
-
-        # Update metrics after upsert
-        self.update_metrics()
     
     def search(
         self,
@@ -465,18 +461,6 @@ class FAISSVectorDB(VectorDB):
             "total_vectors": total_vectors,
             "collections": collection_stats
         }
-
-    def update_metrics(self) -> None:
-        """Update Prometheus metrics for all collections"""
-        for collection in self.indices.keys():
-            # Update document count
-            doc_count = len(self.metadata_stores.get(collection, {}))
-            metrics.documents_total.labels(collection=collection).set(doc_count)
-
-            # Update vector DB size (estimated)
-            if collection in self.indices:
-                size = self._estimate_index_size(self.indices[collection])
-                metrics.vector_db_size.labels(collection=collection).set(size)
 
     def _estimate_index_size(self, index: Any) -> int:
         """Estimate FAISS index size in bytes"""

@@ -75,7 +75,7 @@ def main():
 
     args = parser.parse_args()
 
-logger.info("Enterprise RAG System - Document Ingestion starting")
+    logger.info("Enterprise RAG System - Document Ingestion starting")
 
     try:
         # Step 1: Load documents
@@ -107,6 +107,7 @@ logger.info("Enterprise RAG System - Document Ingestion starting")
 
         settings = get_settings()
         logger.info(f"Embedding model: {settings.embedding_model}")
+        embedding_model = get_embedding_model()
 
         # Generate embeddings in batches
         batch_size = 100
@@ -118,7 +119,7 @@ logger.info("Enterprise RAG System - Document Ingestion starting")
             embeddings = embedding_model.embed_texts(texts)
             all_embeddings.extend(embeddings)
 
-logger.info(f"Embedding progress: {min(i + batch_size, len(chunks))}/{len(chunks)}")
+            logger.info(f"Embedding progress: {min(i + batch_size, len(chunks))}/{len(chunks)}")
 
         logger.info(f"Generated {len(all_embeddings)} embeddings")
 
@@ -184,6 +185,7 @@ logger.info(f"Embedding progress: {min(i + batch_size, len(chunks))}/{len(chunks
         sys.exit(1)
     except Exception as e:
         logger.error(f"Ingestion failed: {e}", exc_info=True)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

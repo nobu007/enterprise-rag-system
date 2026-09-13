@@ -692,3 +692,142 @@ def test_delete_drops_id_and_keeps_collection_searchable(temp_vector_db, sample_
     temp_vector_db.delete(["doc2"], collection="missing")
     assert temp_vector_db.index.ntotal == 1
     assert [r.id for r in temp_vector_db.search(sample_vectors[1], top_k=10, collection="default")] == ["doc2"]
+
+
+def test_upsert_in_batch_duplicate_of_stored_id_keeps_last_occurrence(temp_vector_db, sample_vectors):
+    """The Issue 11 headline case: a batch repeating an already-stored id.
+
+    The in-batch fold must run before the known-id rebuild check; unfolded,
+    both batch copies survive the rebuild and get appended, so ntotal grows
+    and search returns the id once per copy. The last occurrence must win.
+    """
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["doc1"],
+        metadata=[{"text": "stored"}],
+        collection="default",
+    )
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0], sample_vectors[1]],
+        ids=["doc1", "doc1"],
+        metadata=[{"text": "v3"}, {"text": "v4"}],
+        collection="default",
+    )
+
+    assert temp_vector_db.index.ntotal == 1
+    results = temp_vector_db.search(sample_vectors[1], top_k=10, collection="default")
+    assert [r.id for r in results] == ["doc1"]
+    assert results[0].text == "v4"
+
+
+def test_delete_with_duplicate_ids_in_one_call_rebuilds_once(temp_vector_db, sample_vectors, sample_metadata):
+    """delete() may receive the same id twice; the removal set dedupes it."""
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+
+    temp_vector_db.delete(["doc1", "doc1"], collection="default")
+
+    assert temp_vector_db.index.ntotal == 1
+    assert temp_vector_db.id_to_idx_mappings["default"] == {"doc2": 0}
+    assert [r.id for r in temp_vector_db.search(sample_vectors[1], top_k=10, collection="default")] == ["doc2"]
+
+
+def test_delete_mixed_known_and_unknown_ids_keeps_the_rest(temp_vector_db, sample_vectors, sample_metadata):
+    """One call may mix known and unknown ids; only the known ones are removed."""
+    temp_vector_db.upsert(
+        vectors=sample_vectors,
+        ids=["doc1", "doc2", "doc3"],
+        metadata=sample_metadata,
+        collection="default",
+    )
+
+    temp_vector_db.delete(["doc2", "ghost"], collection="default")
+
+    assert temp_vector_db.index.ntotal == 2
+    assert set(temp_vector_db.id_to_idx_mappings["default"]) == {"doc1", "doc3"}
+    assert "doc2" not in temp_vector_db.metadata_stores["default"]
+    results = temp_vector_db.search(sample_vectors[0], top_k=10, collection="default")
+    assert sorted(r.id for r in results) == ["doc1", "doc3"]
+
+
+def test_delete_in_default_collection_rebinds_index_alias(temp_vector_db, sample_vectors, sample_metadata):
+    """After a default-collection delete, self.index must be the rebuilt index.
+
+    _rebuild_without_ids swaps self.indices[collection] for a fresh index and
+    re-aliases self.index only when collection == "default"; a stale alias
+    here would silently strand every legacy consumer on the pre-delete index.
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+
+    temp_vector_db.delete(["doc1"], collection="default")
+
+    assert temp_vector_db.index is temp_vector_db.indices["default"]
+    assert temp_vector_db.index.ntotal == 1
+    # The legacy metadata alias shares the store dict, so the deleted id is
+    # gone from it too.
+    assert temp_vector_db.metadata_store == {"doc2": sample_metadata[1]}
+
+
+def test_delete_in_named_collection_preserves_metric_and_siblings(temp_vector_db, sample_vectors, sample_metadata):
+    """A delete-rebuild in one collection keeps its metric and leaves the rest alone."""
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+    temp_vector_db.create_index(dimension=2, metric="euclidean", collection="hr")
+    temp_vector_db.upsert(
+        vectors=[[1.0, 0.0], [0.0, 1.0]],
+        ids=["hr1", "hr2"],
+        metadata=[{"text": "hr1"}, {"text": "hr2"}],
+        collection="hr",
+    )
+
+    temp_vector_db.delete(["hr1"], collection="hr")
+
+    import faiss
+    assert temp_vector_db.indices["hr"].metric_type == faiss.METRIC_L2
+    assert temp_vector_db.indices["hr"].ntotal == 1
+    assert [r.id for r in temp_vector_db.search([0.0, 1.0], top_k=10, collection="hr")] == ["hr2"]
+
+    # "default" keeps its index, alias and vectors untouched.
+    assert temp_vector_db.index is temp_vector_db.indices["default"]
+    results = temp_vector_db.search(sample_vectors[0], top_k=10, collection="default")
+    assert sorted(r.id for r in results) == ["doc1", "doc2"]
+    assert temp_vector_db.get_stats()["collections"]["hr"]["total_vectors"] == 1
+
+
+def test_delete_survives_save_and_reload(temp_vector_db, sample_vectors, sample_metadata):
+    """A deleted id must stay deleted after the save -> connect round trip.
+
+    _rebuild_without_ids drops the removed ids' metadata from the collection
+    store; if it did not, the JSON save would re-persist the stale entry and
+    a reloaded instance would expose the deleted document's metadata again.
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+    temp_vector_db.delete(["doc1"], collection="default")
+    temp_vector_db.save(temp_vector_db.index_path)
+
+    reloaded = FAISSVectorDB(index_path=temp_vector_db.index_path)
+    reloaded.connect()
+
+    assert reloaded.id_to_idx_mappings["default"] == {"doc2": 0}
+    assert "doc1" not in reloaded.metadata_stores["default"]
+    results = reloaded.search(sample_vectors[0], top_k=10, collection="default")
+    assert [r.id for r in results] == ["doc2"]
+    assert results[0].text == sample_metadata[1]["text"]

@@ -17,8 +17,8 @@
 実装後、次の順でリポジトリの検証を行う。
 
 ```bash
-python3 -m compileall app -q
-python3 -m pytest -q
+.venv310/bin/python -m compileall app scripts -q
+.venv310/bin/python -m pytest tests/ -q
 ```
 
 `tests/` が存在しない場合はテストを実行せず、その事実を報告する。既存テストを

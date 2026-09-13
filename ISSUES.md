@@ -1,77 +1,62 @@
-# 改善提案 (GitHub Issues)
+# 改善提案 (Issues)
 
-以下の改善提案をGitHub Issueとして登録することを推奨します。
-
----
-
-## Issue 1: テスト戦略の確立と実装
-
-**タイトル:** テストカバレッジの向上とCIパイプラインの整備
-
-**内容:**
-現在、`tests/` ディレクトリが存在しますが、中身が不足しており、自動テストが機能していません。エンタープライズ品質を担保するために、以下のテストを実装する必要があります。
-
-- **Unit Tests:** 各コンポーネント（Retriever, RAGPipeline等）の単体テスト
-- **Integration Tests:** データベースやAPIを含めた結合テスト
-- **CI Configuration:** GitHub Actions等での自動テスト実行設定
-
-**タスク:**
-- [x] `pytest` の設定ファイル (`pytest.ini`) を作成する — 2026-09-13: `pytest.ini` 実在を確認（[pytest]・test_*.py discovery）。以後の本 Issue の残タスクなし
-- [x] `app/services/rag_pipeline.py` の単体テストを作成する — 2026-09-12: `batch_query` の個別失敗時エラー応答と、失敗後も後続質問を処理する継続性を回帰テストで検証
-- [x] `app/api/routes/query.py` のAPIテストを作成する — 2026-09-12: production mount `/api/v1/query/` の成功応答を回帰テストで検証
-- [x] テスト実行用のドキュメントを更新する — 2026-09-12: `pytest tests/ -v --cov=app`（TestClient は uvloop backend）→ 900 passed, 1 warning, 86% coverage
+> **2026-09-13 スリムダウン後の正**: 本リポジトリはデータ統合スパイン（ローダ・
+> パーサ・チャンク分割・バリデーション・埋め込み・ベクトルストア + 最小 Ingest API）
+> に整理された。それ以外の機能（query/パイプライン/リランキング/キャッシュ/Celery
+> バッチ/暗号化/テナント/レート制限/メトリクス等）は削除済みで、削除対象を題材に
+> した旧 Issue は完了または無効化した。新しい Loop 候補は本ファイルの先頭未完了項目。
 
 ---
 
-## Issue 2: オブザーバビリティの向上 (構造化ロギング)
+## Issue 1: テスト戦略の確立と実装 — **完了・2026-09-13 再確認**
 
-**タイトル:** `print()` 文の廃止と構造化ロギングの導入
+- [x] `pytest` の設定ファイル (`pytest.ini`) を作成する — `pytest.ini` 実在（[pytest]・test_*.py discovery・asyncio auto）
+- [x] 単体テスト — 2026-09-13 スリムダウン後: **260 passed / 0 failed**（`.venv310`）
+- [x] テスト実行用のドキュメントを更新する — README「Tests」節に `.venv310/bin/python -m pytest tests/ -q` を記載
+- 注: 旧タスクの `rag_pipeline` / `query.py` テストは対象モジュール削除に伴い閉じた
 
-**内容:**
-現在、アプリケーションのログ出力に `print()` が多用されています。これは本番環境での監視やデバッグに適していません。標準の `logging` モジュールまたは `structlog` を導入し、JSON形式などでログを出力できるようにすべきです。
+## Issue 2: オブザーバビリティの向上 (構造化ロギング) — **完了**
 
-**タスク:**
-- [x] ロギング設定を行うユーティリティモジュールを作成する — 2026-09-13: `app/core/logging_config.py` 実在（`get_logger()` 提供・ルート HANDLER へ伝播）を確認
-- [x] `app/main.py` および各サービス内の `print()` をロガー呼び出しに置換する — 2026-09-13: `query.py` と `concurrency.py` の例示コードに残っていた6箇所を `logger.info()` に置換（`database.py:291` と logging 設定の説明文は対象外）
-- [x] リクエストID等をログに含め、トレーサビリティを向上させる — ✅ 2026-09-13 run: `RequestIDMiddleware` を `ValidationMiddleware` の外側に登録し、拒否・警告ログを含むリクエスト経路で request ID を相関可能にした。登録順の回帰テストを追加
+- [x] ロギング設定を行うユーティリティモジュールを作成する — `app/core/logging_config.py`（`get_logger()`・request ID contextvars・サニタイズ）
+- [x] `print()` をロガー呼び出しに置換する — kept モジュールから `print()` は消滅（2026-09-13 確認）
+- 注: `RequestIDMiddleware` タスクはミドルウェア削除に伴い閉じた
 
----
+## Issue 3: 非同期処理の最適化 — **無効化（対象削除）**
 
-## Issue 3: 非同期処理の最適化 (AsyncIO)
+- 旧対象は `RAGPipeline` / `query.py`（2026-09-13 削除）。kept コードの `openai` クライアントは `embeddings.py` 内で `OpenAI`/`AsyncOpenAI` 両対応済み。
 
-**タイトル:** OpenAI API呼び出しの非同期化によるスループット向上
+## Issue 4: セキュリティと構成管理の強化 — **完了**
 
-**内容:**
-FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.completions.create` メソッドが使用されています。これはイベントループをブロックし、同時リクエスト時のパフォーマンスを著しく低下させます。
+- [x] `ALLOWED_ORIGINS` を settings 経由に — `app/core/config.py`
+- [x] CORS の `"*"` 消滅 — `app/main.py` は `settings.ALLOWED_ORIGINS` / `ALLOWED_HEADERS_LIST` を参照
+- [x] ハードコードパスの排除 — `FAISS_INDEX_PATH` 等は Settings Field に集約
 
-**タスク:**
-- [x] `openai` クライアントを `AsyncOpenAI` に変更する — 2026-09-13: `app/main.py:26,47`・`app/api/dependencies.py:9` で `AsyncOpenAI` 使用済みを確認
-- [x] `RAGPipeline` クラスのメソッドを `async def` にリファクタリングする — 2026-09-13: `app/services/rag_pipeline.py` の `query`/`batch_query`/`stream_query`/`_call_llm` が `async def` 済みを確認
-- [x] 関連する呼び出し元（APIルート）を `await` を使用するように修正する — 2026-09-13: `app/api/routes/query.py:152`（`await pipeline.query`）・`:265`（`await pipeline.batch_query`）を確認
+## Issue 5: Dependency Injection の適正化 — **無効化（対象削除）**
 
----
-
-## Issue 4: セキュリティと構成管理の強化
-
-**タイトル:** ハードコードされた設定の排除とCORS制限
-
-**内容:**
-`app/main.py` 内でCORS設定が `allow_origins=["*"]` となっています。また、ファイルパスなどが一部ハードコードされている箇所が見受けられます。これらを環境変数や設定ファイルから制御できるように修正する必要があります。
-
-**タスク:**
-- [x] `config.py` に `ALLOWED_ORIGINS` 設定を追加する — 2026-09-13: `app/core/config.py` の settings 経由で `ALLOWED_ORIGINS` 参照済みを確認
-- [x] `app/main.py` のCORS設定を修正する — 2026-09-13: `app/main.py:224` `allow_origins=settings.ALLOWED_ORIGINS`（`"*"` 消滅）を確認
-- [x] コード内のハードコードされたパス（例: `./data/faiss_index.bin`）を設定ファイル経由で参照するように変更する — 2026-09-13: `app/core/config.py:33` `faiss_index_path: str = Field("./data/faiss_index.bin")`（設定変更可能な Field に集約済み）を確認
+- 旧対象の `_rag_pipeline` グローバル / `dependencies.get_rag_pipeline` は 2026-09-13 削除済み。現行 `main.py` は lifespan で `app.state` に初期化し、ルータは必要時に lazy import する。
 
 ---
 
-## Issue 5: 依存性の注入 (Dependency Injection) の適正化
+## Issue 6: CLI ingest がバリデーションゲートを通らない
 
-**タイトル:** グローバル変数の廃止とDependency Injectionの導入
-
-**内容:**
-`app/main.py` で `_rag_pipeline` というグローバル変数が使用されています。これはテスト時のモック化を困難にし、アプリケーションのステート管理を複雑にします。FastAPIのDependency Injectionシステムを活用すべきです。
+**内容:** `scripts/ingest.py` は `DocumentLoader.load_directory` の結果をそのまま
+分割・埋め込みする一方、API 経路（`POST /api/v1/documents/ingest`）は
+`DocumentValidator` で品質ゲート（空/短文・PII・XSS/SQLi パターン）を通す。
+同じデータを CLI から入れるとゲート無しで流入し、経路間で挙動が不一致。
 
 **タスク:**
-- [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
-- [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+- [ ] `scripts/ingest.py` に `DocumentValidator.validate_batch` を組み込み、無効ドキュメントをスキップして件数を報告する（API と同じゲート）
+
+## Issue 7: `collection` 引数が ABC/Pinecone の `upsert` に存在しない
+
+**内容:** `VectorDB` ABC と `PineconeVectorDB.upsert` のシグネチャは
+`(vectors, ids, metadata)` のみで `collection` 引数がなく、`collection` を
+受け付けるのは `FAISSVectorDB.upsert` だけ。そのため
+- `scripts/ingest.py` は `collection=` を渡さず常に `"default"` に入る
+- API 経路（`documents.py`）は `collection=` を渡すため、Pinecone バックエンドでは `TypeError` になる潜在バグ
+
+という不整合が残っている（2026-09-13 のシグネチャ照会で確認）。
+
+**タスク:**
+- [ ] `VectorDB` ABC と `PineconeVectorDB.upsert` に `collection: str = "default"` を追加する（Pinecone は namespace への写像、非対応なら明示的なエラーまたは注記）
+- [ ] `scripts/ingest.py` の `upsert` 呼び出しに `collection=args.collection` を渡す

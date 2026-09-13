@@ -1,6 +1,8 @@
 # LOOP.md — Enterprise RAG System 自律改善ループ（bounded task）
 
 > 自律 run は**この文書だけを命令として**実行する。1 run = 1 改善。実行しない判断は「中断レポート」に書いて終わる。
+>
+> **リポジトリの現姿（2026-09-13 スリムダウン後）**: データ統合スパイン（`app/services/document_loader*`・`parser`・`validator`、`app/core/{config,embeddings,vectordb,logging_config}`、`app/api/routes/{documents,health}`、`scripts/ingest.py`）。query/パイプライン/リランキング/キャッシュ/Celery/暗号化/テナント/レート制限/メトリクス/マルチテナント UI は削除済み — 復活させない。機能追加より、 kept スパインの正確さ（バグ修正・テスト・README と実態の一致）を優先する。
 
 ## 実行単位
 
@@ -15,7 +17,7 @@
 
 1. **候補確定（目安 5 分）** — 上記の順で 1 件決める。既に直っている/安全でない → 次の候補へ。全て不適なら変更なしで中断レポート。
 2. **実装（最小）** — 触るファイルを必要最小限に。目安 30 分を超える作業は着手しない。
-3. **検証** — `python3 -m compileall app -q`（構文）+ `tests/` が存在すれば `python3 -m pytest -q`。**既存テストを壊したまま commit しない**。
+3. **検証** — `.venv310/bin/python -m compileall app scripts -q`（構文）+ `.venv310/bin/python -m pytest tests/ -q`。**既存テストを壊したまま commit しない**。
 4. **commit** — `git add` は変更ファイルのみ・1 件（例: `fix: <1行要約>`）。
 5. **完了報告** — 変更ファイル・検証結果・残課題を最終出力に。
 

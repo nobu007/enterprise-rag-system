@@ -1,30 +1,30 @@
 {
-  "total_terms": 31,
+  "total_terms": 9,
   "by_layer": {
-    "core": 9,
-    "domain": 14,
-    "aux": 8
+    "core": 3,
+    "domain": 5,
+    "aux": 1
   },
   "draft_terms": 0,
   "invariants": 23,
-  "mappings": 31,
+  "mappings": 9,
   "ambiguities": 3,
   "conflicts": 6,
   "term_queue_pending": 0,
   "claims_retained_lines": 7,
-  "test_files": 46,
-  "test_files_note": "strict test_*.py/*_test.py count under tests/ (45 unit + 1 integration). 45->46 on 2026-08-25 with test_concept_metrics_consistency.py (stale-metrics guard test, now enforced by the suite itself).",
+  "test_files": 16,
+  "test_files_note": "strict test_*.py/*_test.py count under tests/ (all unit). 46->16 on 2026-09-13: the 2026-09-13 slim-down removed the subsystems whose tests were deleted (query/pipeline/retrieval/ranking/reranker/streaming, cache, celery batch, encryption, tenancy, concurrency, circuit breaker, rate limit, metrics, validation middleware, database pool, security validator).",
   "decisions_md_lines": 92,
   "metrics": {
-    "Q1_ontology_coverage_class_resolution_pct": 96.8,
-    "Q1_note": "30/31 terms resolve to a concrete `class <name>` in app/; RateLimiter is the lone non-class term (slowapi-based, evidenced by helper fns get_user_id/get_client_ip). All app/ subpackages have anchor terms.",
+    "Q1_ontology_coverage_class_resolution_pct": 100.0,
+    "Q1_note": "9/9 terms resolve to a concrete `class <name>` in app/ after the 2026-09-13 slim-down re-baseline; the dictionary now covers only kept modules.",
     "Q2_mapping_rate_pct": 100.0,
-    "Q3_invariant_to_testfile_ratio_pct": 50.0,
-    "Q3_note": "23 invariants / 46 strict test files = 50.0%. Denominator 45->46 on 2026-08-25 with test_concept_metrics_consistency.py; drift of this field is now caught by the suite (test_q3_ratio_derives_from_counts).",
+    "Q3_invariant_to_testfile_ratio_pct": 143.8,
+    "Q3_note": "23 invariants / 16 strict test files = 143.8% (2026-09-13 re-baseline).",
     "Q4_draft_rate_pct": 0.0,
     "Q5_unmapped_claims_rate_pct": 0.0,
-    "Q5_note": "7 claims (all mapped to canonical terms: EmbeddingModel/RAGPipeline/StreamingRAGService/StreamingRAGPipeline/Document/QueryRequest); unmapped 0%. Refreshed 2026-09-12 - streaming POST JSON path contract is covered by CFLT-APIPATH-001 resolution, INV-IF-001, and the focused API documentation test.",
-    "Q6_terms_count": 31,
+    "Q5_note": "claims.ndjson is retained as history; several mapped terms were removed with the slim-down, but no claim is __UNMAPPED__ (2026-09-13 re-baseline).",
+    "Q6_terms_count": 9,
     "Q7_charter_complete": true,
     "Q8_evidence_rate_pct": 100.0,
     "evidence_line_refs_verified_cycle1": "spot-checked rag_pipeline/retrieval/encryption/concurrency/request_id evidence vs code at 99c3186 -> accurate, no drift",
@@ -102,5 +102,12 @@
     "full_test_evidence": "pytest tests/ -v --cov=app -> 906 passed; pytest tests/ -q --cov=app --cov-report=term-missing -> 906 passed in 48.55s, TOTAL 86% (2026-09-12).",
     "quality_gate_all_pass": true
   },
-  "run_id": "20260911-231816-613795"
+  "run_id": "20260911-231816-613795",
+  "cycle11_maintenance": {
+    "phase": "maintenance",
+    "date": "2026-09-13",
+    "boot_decision": "2026-09-13 slim-down: repo reduced to the data-integration spine; ontology/mappings pruned to kept classes and metrics re-baselined so every quality gate reflects the new shape.",
+    "delta": "Removed 22 terms for deleted classes; re-baselined Q1-Q8; test_files 46->16.",
+    "quality_gate_all_pass": true
+  }
 }

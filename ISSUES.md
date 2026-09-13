@@ -56,3 +56,16 @@
 - [x] `VectorDB` ABC と `PineconeVectorDB.upsert` に `collection: str = "default"` を追加する（Pinecone は namespace への写像）
 - [x] `scripts/ingest.py` の `upsert` 呼び出しに `collection=args.collection` を渡す
 - ✅ 2026-09-13 run: Pinecone の upsert/search/delete を同じ namespace に揃え、`default` は既存の空 namespace を維持。CLI 引数伝播・101件のバッチ・省略時/明示 default/名前付き collection をモック検証。構文検証成功、**265 passed / 0 failed**（5 warnings）。
+
+## Issue 8: ハーネスの PYTHONPATH が `scripts` を shadow してテスト収集が崩壊 — **完了・2026-09-14**
+
+**内容:** `scripts/` に `__init__.py` が無い間は暗黙の namespace package になり、
+sys.path 前方に外部の正規 `scripts` パッケージ（例: ハーネスが
+`PYTHONPATH=/home/jinno/ai-hub` を export するが、その `scripts/` に `ingest.py`
+は存在しない）が置かれると `import scripts.ingest` が `ModuleNotFoundError`
+となり、テスト収集ごと exit 2 で崩壊していた。
+
+**タスク:**
+- [x] `scripts/__init__.py` を追加し、リポジトリローカルの正規パッケージが外部 `scripts` より優先されるようにする
+- [x] `import scripts.ingest` が本リポジトリ配下で解決されることを保証する回帰テストを追加する
+- ✅ 2026-09-14 run: 修正は `cbf193c` で着地済み（回帰テストを `tests/unit/test_ingest_script.py` に追加、README の CLI フラグ誤記 `--source-path`→`--source` も同時修正）。`PYTHONPATH=/home/jinno/ai-hub`・合成 shadow ツリー・unset の 3 条件で **266 passed / 0 failed** を確認。

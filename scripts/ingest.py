@@ -22,6 +22,7 @@ from app.core.embeddings import get_embedding_model
 from app.core.vectordb import get_vector_db
 from app.core.config import get_settings
 from app.core.logging_config import setup_logging, get_logger
+from app.services.validator import DocumentValidator
 
 # Setup logging for CLI script
 setup_logging()
@@ -91,6 +92,33 @@ def main():
             sys.exit(1)
 
         logger.info(f"Loaded {len(documents)} documents")
+
+        # Apply the same quality and security gate used by the API ingestion path.
+        logger.info(
+            f"Validating {len(documents)} documents before ingestion"
+        )
+        validation_results = DocumentValidator().validate_batch(documents)
+        valid_documents = []
+        invalid_count = 0
+
+        for document, result in zip(documents, validation_results):
+            if result.is_valid:
+                valid_documents.append(document)
+            else:
+                invalid_count += 1
+                logger.warning(
+                    f"Skipping invalid document "
+                    f"{document.metadata.get('source', 'unknown')}: "
+                    f"{[str(error) for error in result.errors]}"
+                )
+
+        if invalid_count:
+            logger.warning(f"Skipped {invalid_count} invalid document(s)")
+
+        documents = valid_documents
+        if not documents:
+            logger.error("No valid documents found after validation")
+            sys.exit(1)
 
         # Step 2: Split documents into chunks
         logger.info(f"Splitting documents (chunk_size={args.chunk_size}, overlap={args.chunk_overlap})")

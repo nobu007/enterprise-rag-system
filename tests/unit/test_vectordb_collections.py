@@ -6,7 +6,42 @@ import pytest
 import tempfile
 import os
 import logging
-from app.core.vectordb import FAISSVectorDB
+from unittest.mock import Mock, call
+from app.core.vectordb import FAISSVectorDB, PineconeVectorDB
+
+
+@pytest.mark.parametrize(
+    "kwargs, namespace",
+    [({}, ""), ({"collection": "default"}, ""), ({"collection": "hr"}, "hr")],
+)
+def test_pinecone_collection_namespace_round_trip(kwargs, namespace):
+    """Every batch, search and delete must target the same collection."""
+    db = PineconeVectorDB("test-key", "test-environment", "test-index")
+    db.index = Mock()
+    vectors = [[0.1, 0.2, 0.3]] * 101
+    ids = [f"doc-{i}" for i in range(101)]
+    metadata = [{"text": f"Content {i}"} for i in range(101)]
+    items = list(zip(ids, vectors, metadata))
+
+    db.upsert(vectors, ids, metadata, **kwargs)
+
+    assert db.index.upsert.call_args_list == [
+        call(vectors=items[:100], namespace=namespace),
+        call(vectors=items[100:], namespace=namespace),
+    ]
+    db.index.query.return_value.matches = [
+        Mock(id=ids[0], score=0.9, metadata=metadata[0])
+    ]
+    results = db.search(vectors[0], filter_dict={"kind": "text"}, **kwargs)
+    db.index.query.assert_called_once_with(
+        vector=vectors[0], top_k=5, filter={"kind": "text"},
+        include_metadata=True, namespace=namespace,
+    )
+    assert results[0].id == ids[0]
+    assert results[0].text == metadata[0]["text"]
+
+    db.delete(ids, **kwargs)
+    db.index.delete.assert_called_once_with(ids=ids, namespace=namespace)
 
 
 @pytest.fixture

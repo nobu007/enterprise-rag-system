@@ -103,6 +103,7 @@ def test_main_skips_invalid_documents_before_processing(monkeypatch, caplog):
     assert embedding_inputs == [[valid.content]]
     assert len(upsert_calls) == 1
     assert upsert_calls[0]["ids"] == [valid.doc_id]
+    assert upsert_calls[0]["collection"] == "hr"
     assert upsert_calls[0]["metadata"] == [
         {"source": "valid.txt", "file_type": "txt", "collection": "hr"}
     ]

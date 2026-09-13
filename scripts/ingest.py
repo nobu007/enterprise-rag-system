@@ -184,7 +184,8 @@ def main():
         vector_db.upsert(
             vectors=all_embeddings,
             ids=ids,
-            metadata=metadata
+            metadata=metadata,
+            collection=args.collection
         )
 
         # Save FAISS index

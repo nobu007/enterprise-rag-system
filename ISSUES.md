@@ -42,7 +42,7 @@
 - [x] `scripts/ingest.py` に `DocumentValidator().validate_batch` を組み込み、無効ドキュメントをスキップして件数を報告する（API と同じゲート）
 - ✅ 2026-09-13 run: 実装は chain worktree の残骸から回収し、本体 checkout で検証のうえ取り込んだ（`tests/unit/test_ingest_script.py` 追加、**262 passed / 0 failed**）。全件無効時は `sys.exit(1)`。
 
-## Issue 7: `collection` 引数が ABC/Pinecone の `upsert` に存在しない
+## Issue 7: `collection` 引数が ABC/Pinecone の `upsert` に存在しない — **完了・2026-09-13**
 
 **内容:** `VectorDB` ABC と `PineconeVectorDB.upsert` のシグネチャは
 `(vectors, ids, metadata)` のみで `collection` 引数がなく、`collection` を
@@ -53,5 +53,6 @@
 という不整合が残っている（2026-09-13 のシグネチャ照会で確認）。
 
 **タスク:**
-- [ ] `VectorDB` ABC と `PineconeVectorDB.upsert` に `collection: str = "default"` を追加する（Pinecone は namespace への写像、非対応なら明示的なエラーまたは注記）
-- [ ] `scripts/ingest.py` の `upsert` 呼び出しに `collection=args.collection` を渡す
+- [x] `VectorDB` ABC と `PineconeVectorDB.upsert` に `collection: str = "default"` を追加する（Pinecone は namespace への写像）
+- [x] `scripts/ingest.py` の `upsert` 呼び出しに `collection=args.collection` を渡す
+- ✅ 2026-09-13 run: Pinecone の upsert/search/delete を同じ namespace に揃え、`default` は既存の空 namespace を維持。CLI 引数伝播・101件のバッチ・省略時/明示 default/名前付き collection をモック検証。構文検証成功、**265 passed / 0 failed**（5 warnings）。

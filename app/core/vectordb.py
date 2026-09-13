@@ -42,7 +42,8 @@ class VectorDB(ABC):
         self,
         vectors: List[List[float]],
         ids: List[str],
-        metadata: List[Dict[str, Any]]
+        metadata: List[Dict[str, Any]],
+        collection: str = "default"
     ) -> None:
         """Insert or update vectors"""
         pass
@@ -52,13 +53,14 @@ class VectorDB(ABC):
         self,
         query_vector: List[float],
         top_k: int = 5,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        collection: str = "default"
     ) -> List[SearchResult]:
         """Search for similar vectors"""
         pass
     
     @abstractmethod
-    def delete(self, ids: List[str]) -> None:
+    def delete(self, ids: List[str], collection: str = "default") -> None:
         """Delete vectors by IDs"""
         pass
     
@@ -69,7 +71,7 @@ class VectorDB(ABC):
 
 
 class PineconeVectorDB(VectorDB):
-    """Pinecone vector database implementation"""
+    """Pinecone collections map to namespaces; default keeps the legacy empty namespace."""
     
     def __init__(self, api_key: str, environment: str, index_name: str):
         self.api_key = api_key
@@ -123,7 +125,8 @@ class PineconeVectorDB(VectorDB):
         self,
         vectors: List[List[float]],
         ids: List[str],
-        metadata: List[Dict[str, Any]]
+        metadata: List[Dict[str, Any]],
+        collection: str = "default"
     ) -> None:
         """Insert or update vectors in Pinecone"""
         if not self.index:
@@ -139,7 +142,9 @@ class PineconeVectorDB(VectorDB):
         batch_size = 100
         for i in range(0, len(items), batch_size):
             batch = items[i:i + batch_size]
-            self.index.upsert(vectors=batch)
+            self.index.upsert(
+                vectors=batch, namespace="" if collection == "default" else collection
+            )
 
         logger.info(f"Upserted {len(items)} vectors")
     
@@ -147,7 +152,8 @@ class PineconeVectorDB(VectorDB):
         self,
         query_vector: List[float],
         top_k: int = 5,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        collection: str = "default"
     ) -> List[SearchResult]:
         """Search for similar vectors in Pinecone"""
         if not self.index:
@@ -157,7 +163,8 @@ class PineconeVectorDB(VectorDB):
             vector=query_vector,
             top_k=top_k,
             filter=filter_dict,
-            include_metadata=True
+            include_metadata=True,
+            namespace="" if collection == "default" else collection
         )
         
         search_results = []
@@ -171,12 +178,14 @@ class PineconeVectorDB(VectorDB):
         
         return search_results
     
-    def delete(self, ids: List[str]) -> None:
+    def delete(self, ids: List[str], collection: str = "default") -> None:
         """Delete vectors from Pinecone"""
         if not self.index:
             raise RuntimeError("Not connected to Pinecone. Call connect() first.")
 
-        self.index.delete(ids=ids)
+        self.index.delete(
+            ids=ids, namespace="" if collection == "default" else collection
+        )
         logger.info(f"Deleted {len(ids)} vectors")
     
     def get_stats(self) -> Dict[str, Any]:

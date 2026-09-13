@@ -362,6 +362,48 @@ class FAISSVectorDB(VectorDB):
         """Create a new FAISS index for a collection"""
         self._create_collection_index(collection, dimension, metric)
     
+    def _rebuild_without_ids(self, collection: str, remove_ids: set) -> None:
+        """Rebuild a collection's flat index, dropping the given document ids.
+
+        FAISS flat indexes cannot delete vectors in place, so honoring the
+        ABC's "insert or update" contract requires a rebuild: reconstruct the
+        kept vectors, add them to a fresh index of the same metric, and remap
+        the ID <-> idx mappings (stored vectors are already L2-normalized, so
+        they are re-added as-is).
+        """
+        import numpy as np
+        import faiss
+
+        index = self.indices[collection]
+        idx_to_id = self.idx_to_id_mappings[collection]
+        keep_idxs = [
+            i for i in range(index.ntotal) if idx_to_id.get(i) not in remove_ids
+        ]
+        if len(keep_idxs) == index.ntotal:
+            return
+
+        if index.metric_type == faiss.METRIC_L2:
+            new_index = faiss.IndexFlatL2(index.d)
+        else:
+            new_index = faiss.IndexFlatIP(index.d)
+        if keep_idxs:
+            kept = np.vstack(
+                [index.reconstruct(i) for i in keep_idxs]
+            ).astype(np.float32)
+            new_index.add(kept)
+        self.indices[collection] = new_index
+        if collection == "default":
+            self.index = new_index
+
+        new_id_to_idx: Dict[str, int] = {}
+        new_idx_to_id: Dict[int, str] = {}
+        for new_idx, old_idx in enumerate(keep_idxs):
+            id_ = idx_to_id[old_idx]
+            new_id_to_idx[id_] = new_idx
+            new_idx_to_id[new_idx] = id_
+        self.id_to_idx_mappings[collection] = new_id_to_idx
+        self.idx_to_id_mappings[collection] = new_idx_to_id
+
     def upsert(
         self,
         vectors: List[List[float]],
@@ -377,6 +419,16 @@ class FAISSVectorDB(VectorDB):
         index = self._get_or_create_collection(collection, dimension=dimension)
         if index is None:
             raise RuntimeError(f"Index for collection '{collection}' not created. Call create_index() first.")
+
+        # Document ids are content hashes, so re-ingesting an unchanged
+        # document re-upserts the same id. Drop the old vectors first,
+        # otherwise the id ends up duplicated in the index and search
+        # returns the same document once per stale copy.
+        known_ids = self.id_to_idx_mappings.get(collection, {})
+        duplicate_ids = {id_ for id_ in ids if id_ in known_ids}
+        if duplicate_ids:
+            self._rebuild_without_ids(collection, duplicate_ids)
+            index = self.indices[collection]
 
         import numpy as np
         import faiss

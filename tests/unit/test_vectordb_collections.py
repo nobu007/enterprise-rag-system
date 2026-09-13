@@ -478,3 +478,105 @@ def test_vector_db_legacy_pickle_metadata_migration(temp_vector_db, sample_vecto
     )
     assert [r.id for r in results] == ["doc1"]
     assert results[0].text == sample_metadata[0]["text"]
+
+
+def test_upsert_same_id_updates_instead_of_duplicating(temp_vector_db, sample_vectors, sample_metadata):
+    """Re-upserting a content-hash id must replace, not append.
+
+    Document ids are content hashes, so re-running an ingest re-upserts the
+    same ids; the previous add-only behavior duplicated every vector and
+    search returned the same document once per stale copy.
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+
+    updated_meta = {"filename": "doc1.pdf", "page": 1, "text": "Content of document 1 v2"}
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["doc1"],
+        metadata=[updated_meta],
+        collection="default",
+    )
+
+    assert temp_vector_db.index.ntotal == 2
+    results = temp_vector_db.search(
+        query_vector=sample_vectors[0], top_k=10, collection="default"
+    )
+    assert sorted(r.id for r in results) == ["doc1", "doc2"]
+    assert [r for r in results if r.id == "doc1"][0].text == "Content of document 1 v2"
+    assert temp_vector_db.get_stats()["collections"]["default"]["total_vectors"] == 2
+
+
+def test_upsert_mixed_batch_keeps_new_and_updated_ids(temp_vector_db, sample_vectors, sample_metadata):
+    """A batch may contain both new and already-ingested ids."""
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["doc1"],
+        metadata=[sample_metadata[0]],
+        collection="default",
+    )
+
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc3"],
+        metadata=[sample_metadata[0], sample_metadata[2]],
+        collection="default",
+    )
+
+    assert temp_vector_db.index.ntotal == 2
+    results = temp_vector_db.search(
+        query_vector=sample_vectors[2], top_k=1, collection="default"
+    )
+    assert [r.id for r in results] == ["doc3"]
+
+
+def test_upsert_update_survives_save_and_reload(temp_vector_db, sample_vectors, sample_metadata):
+    """The rebuilt mappings persist consistently through the JSON metadata."""
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0]],
+        ids=["doc1"],
+        metadata=[{"text": "updated"}],
+        collection="default",
+    )
+    temp_vector_db.save(temp_vector_db.index_path)
+
+    reloaded = FAISSVectorDB(index_path=temp_vector_db.index_path)
+    reloaded.connect()
+    results = reloaded.search(
+        query_vector=sample_vectors[0], top_k=10, collection="default"
+    )
+    assert sorted(r.id for r in results) == ["doc1", "doc2"]
+    assert [r for r in results if r.id == "doc1"][0].text == "updated"
+
+
+def test_upsert_update_preserves_euclidean_metric(temp_vector_db):
+    """A rebuilt L2 collection must stay L2, not silently become cosine."""
+    temp_vector_db.create_index(dimension=2, metric="euclidean", collection="l2c")
+    temp_vector_db.upsert(
+        vectors=[[1.0, 0.0], [0.0, 1.0]],
+        ids=["a", "b"],
+        metadata=[{"text": "a"}, {"text": "b"}],
+        collection="l2c",
+    )
+    temp_vector_db.upsert(
+        vectors=[[1.0, 0.0]],
+        ids=["a"],
+        metadata=[{"text": "a2"}],
+        collection="l2c",
+    )
+
+    import faiss
+    assert temp_vector_db.indices["l2c"].metric_type == faiss.METRIC_L2
+    assert temp_vector_db.indices["l2c"].ntotal == 2
+    results = temp_vector_db.search([1.0, 0.0], top_k=10, collection="l2c")
+    assert sorted(r.id for r in results) == ["a", "b"]

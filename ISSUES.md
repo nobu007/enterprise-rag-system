@@ -8,6 +8,21 @@
 
 ---
 
+## Issue 10: FAISS `upsert` が追記専用で同一 ID が重複する — **完了・2026-09-14**
+
+**内容:** `FAISSVectorDB.upsert` は ABC 契約（"Insert or update vectors"）に反して
+常に `index.add()` で追記しており、ドキュメント ID はコンテンツハッシュのため
+再 ingest（README 記載の CLI 再実行を含む）で同一 ID のベクトルが蓄積し、
+`search` が同一ドキュメントを古いコピーの数だけ重複返却し `get_stats` も膨張する
+（再現: 再 upsert 後 `ntotal` 1→2、hits `['doc-1', 'doc-1']`）。
+
+**タスク:**
+- [x] 既存 ID を含む upsert で旧ベクトルを排除してから追加する（flat index は
+      in-place 削除不可のため `_rebuild_without_ids` で同一メトリックの新 index へ再構築）
+- [x] 再 upsert が重複を生まないこと・混在バッチ・L2 メトリック保存・save→connect
+      往復を `tests/unit/test_vectordb_collections.py` に追記してピン留め
+- ✅ 2026-09-14 run: **284 passed / 0 failed**（280 既存 + 4 新規）、`compileall app` OK
+
 ## Issue 1: テスト戦略の確立と実装 — **完了・2026-09-13 再確認**
 
 - [x] `pytest` の設定ファイル (`pytest.ini`) を作成する — `pytest.ini` 実在（[pytest]・test_*.py discovery・asyncio auto）

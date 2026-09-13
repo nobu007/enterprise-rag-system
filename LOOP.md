@@ -17,7 +17,13 @@
 
 1. **候補確定（目安 5 分）** — 上記の順で 1 件決める。既に直っている/安全でない → 次の候補へ。全て不適なら変更なしで中断レポート。
 2. **実装（最小）** — 触るファイルを必要最小限に。目安 30 分を超える作業は着手しない。
-3. **検証** — `.venv310/bin/python -m compileall app scripts -q`（構文）+ `.venv310/bin/python -m pytest tests/ -q`。**既存テストを壊したまま commit しない**。
+3. **検証** — 次のフォールバック付き venv パスで実行する（chain の worktree にはローカル `.venv310` が無いため本体 checkout の venv を使う）:
+   ```bash
+   PY=.venv310/bin/python; [ -x "$PY" ] || PY=/home/jinno/enterprise-rag-system/.venv310/bin/python
+   "$PY" -m compileall app scripts -q
+   "$PY" -m pytest tests/ -q
+   ```
+   **既存テストを壊したまま commit しない**。
 4. **commit** — `git add` は変更ファイルのみ・1 件（例: `fix: <1行要約>`）。
 5. **完了報告** — 変更ファイル・検証結果・残課題を最終出力に。
 

@@ -17,9 +17,12 @@
 実装後、次の順でリポジトリの検証を行う。
 
 ```bash
-.venv310/bin/python -m compileall app scripts -q
-.venv310/bin/python -m pytest tests/ -q
+PY=.venv310/bin/python; [ -x "$PY" ] || PY=/home/jinno/enterprise-rag-system/.venv310/bin/python
+"$PY" -m compileall app scripts -q
+"$PY" -m pytest tests/ -q
 ```
+
+フォールバックは chain の worktree（ローカル `.venv310` 無し）でも検証が動くためのもの。
 
 `tests/` が存在しない場合はテストを実行せず、その事実を報告する。既存テストを
 壊した状態では commit しない。秘密・外部サービス・LLM の実呼び出しを伴う検証は

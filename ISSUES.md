@@ -37,15 +37,10 @@
 
 ---
 
-## Issue 6: CLI ingest がバリデーションゲートを通らない
+## Issue 6: CLI ingest がバリデーションゲートを通らない — **完了・2026-09-13**
 
-**内容:** `scripts/ingest.py` は `DocumentLoader.load_directory` の結果をそのまま
-分割・埋め込みする一方、API 経路（`POST /api/v1/documents/ingest`）は
-`DocumentValidator` で品質ゲート（空/短文・PII・XSS/SQLi パターン）を通す。
-同じデータを CLI から入れるとゲート無しで流入し、経路間で挙動が不一致。
-
-**タスク:**
-- [ ] `scripts/ingest.py` に `DocumentValidator.validate_batch` を組み込み、無効ドキュメントをスキップして件数を報告する（API と同じゲート）
+- [x] `scripts/ingest.py` に `DocumentValidator().validate_batch` を組み込み、無効ドキュメントをスキップして件数を報告する（API と同じゲート）
+- ✅ 2026-09-13 run: 実装は chain worktree の残骸から回収し、本体 checkout で検証のうえ取り込んだ（`tests/unit/test_ingest_script.py` 追加、**262 passed / 0 failed**）。全件無効時は `sys.exit(1)`。
 
 ## Issue 7: `collection` 引数が ABC/Pinecone の `upsert` に存在しない
 

@@ -227,10 +227,6 @@ app.add_middleware(
     allow_headers=settings.ALLOWED_HEADERS_LIST,  # Security: restrict allowed headers
 )
 
-# Add request ID middleware for distributed tracing
-# This should be added BEFORE validation middleware to ensure all requests are tracked
-app.add_middleware(RequestIDMiddleware)
-
 # Add validation middleware for security
 # This should be added AFTER CORS middleware but BEFORE request processing
 app.add_middleware(
@@ -239,6 +235,11 @@ app.add_middleware(
     enable_security_validation=True,
     log_suspicious=True
 )
+
+# Add request ID middleware for distributed tracing. Starlette wraps
+# middleware in reverse registration order, so registering this after
+# validation keeps rejected-request logs correlated too.
+app.add_middleware(RequestIDMiddleware)
 
 
 # Include routers

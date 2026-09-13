@@ -64,6 +64,18 @@ class TestRequestContextFilter:
 class TestRequestIDMiddleware:
     """Test RequestIDMiddleware."""
 
+    def test_request_id_wraps_validation_middleware(self):
+        """Validation logs must run inside the request-ID context."""
+        middleware_names = [
+            middleware.cls.__name__ for middleware in app.user_middleware
+        ]
+
+        # FastAPI inserts middleware at the front and Starlette builds the
+        # stack in reverse, so the earlier entry is the outer wrapper.
+        request_id_index = middleware_names.index("RequestIDMiddleware")
+        validation_index = middleware_names.index("ValidationMiddleware")
+        assert request_id_index < validation_index
+
     @pytest.fixture
     def client(self):
         """Create test client."""

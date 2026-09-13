@@ -33,7 +33,7 @@
 **タスク:**
 - [x] ロギング設定を行うユーティリティモジュールを作成する — 2026-09-13: `app/core/logging_config.py` 実在（`get_logger()` 提供・ルート HANDLER へ伝播）を確認
 - [x] `app/main.py` および各サービス内の `print()` をロガー呼び出しに置換する — 2026-09-13: `query.py` と `concurrency.py` の例示コードに残っていた6箇所を `logger.info()` に置換（`database.py:291` と logging 設定の説明文は対象外）
-- [ ] リクエストID等をログに含め、トレーサビリティを向上させる
+- [x] リクエストID等をログに含め、トレーサビリティを向上させる — ✅ 2026-09-13 run: `RequestIDMiddleware` を `ValidationMiddleware` の外側に登録し、拒否・警告ログを含むリクエスト経路で request ID を相関可能にした。登録順の回帰テストを追加
 
 ---
 

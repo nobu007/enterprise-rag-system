@@ -59,7 +59,7 @@ python3.10 -m venv .venv310
 ## Ingest from the CLI
 
 ```bash
-.venv310/bin/python scripts/ingest.py --source-path ./docs --collection my-docs
+.venv310/bin/python scripts/ingest.py --source ./docs --collection my-docs
 ```
 
 `scripts/ingest.py` wires the same pipeline as the API (loader → splitter →

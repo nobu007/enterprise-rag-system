@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -143,3 +144,20 @@ def test_main_stops_when_all_documents_fail_validation(monkeypatch, caplog):
         "No valid documents found after validation" in record.getMessage()
         for record in caplog.records
     )
+
+
+def test_scripts_package_resolves_inside_repository():
+    """Regression: a foreign ``scripts`` package must not shadow the local one.
+
+    ``scripts/`` used to be an implicit namespace package, so when a harness
+    exported ``PYTHONPATH`` pointing at another repository that owns a regular
+    ``scripts`` package, ``import scripts.ingest`` resolved to the foreign tree
+    and collection of this very module failed with ModuleNotFoundError. The
+    explicit ``scripts/__init__.py`` makes the repository-local package win.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = Path(ingest.__file__).resolve()
+
+    assert module_path.parent == repo_root / "scripts"
+    assert module_path.name == "ingest.py"
+    assert hasattr(ingest, "main")

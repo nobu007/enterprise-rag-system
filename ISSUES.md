@@ -8,6 +8,20 @@
 
 ---
 
+## Issue 11: upsert 同一バッチ内の重複 ID が二重登録される／`delete()` が未対応のまま — **未着手・2026-09-14 起票**
+
+**内容:** Issue 10 の修正（`6a00e77`）はインデックス既存 ID との照合のみで、
+同一 upsert 呼び出し内の重複（`ids=["x", "x"]`。id が既知でも rebuild 後に
+バッチ側の 2 件がそのまま追加される）は崩れていない。また `delete()` は
+"not supported" 警告のままで、`_rebuild_without_ids` と同じ機構で実装可能。
+
+**タスク:**
+- [ ] upsert 冒頭でバッチ内重複も除去する（末尾勝ち。既知 ID 照合の前段で ids を set 化して len 比較）
+- [ ] `FAISSVectorDB.delete()` を `_rebuild_without_ids` に委譲し "not supported" 警告を解消する
+- ピンテスト: `test_upsert_duplicate_ids_within_one_batch_stay_unique` を
+  `tests/unit/test_vectordb_collections.py` に strict xfail で追加済み。修正後に
+  XPASS でスイートが失敗するため、その際はマーカーを外すこと
+
 ## Issue 10: FAISS `upsert` が追記専用で同一 ID が重複する — **完了・2026-09-14**
 
 **内容:** `FAISSVectorDB.upsert` は ABC 契約（"Insert or update vectors"）に反して

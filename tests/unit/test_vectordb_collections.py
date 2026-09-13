@@ -580,3 +580,93 @@ def test_upsert_update_preserves_euclidean_metric(temp_vector_db):
     assert temp_vector_db.indices["l2c"].ntotal == 2
     results = temp_vector_db.search([1.0, 0.0], top_k=10, collection="l2c")
     assert sorted(r.id for r in results) == ["a", "b"]
+
+
+def test_upsert_full_reingest_replaces_every_id(temp_vector_db, sample_vectors, sample_metadata):
+    """Re-running a full ingest (every id already known) must stay idempotent.
+
+    The mixed-batch pin exercises the rebuild branch that keeps nothing only
+    incidentally; this pins it directly: both ids are dropped, the rebuilt
+    index starts empty, and both re-added docs carry the fresh metadata.
+    """
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[
+            {"filename": "doc1.pdf", "page": 1, "text": "Content of document 1 v2"},
+            {"filename": "doc2.pdf", "page": 2, "text": "Content of document 2 v2"},
+        ],
+        collection="default",
+    )
+
+    assert temp_vector_db.index.ntotal == 2
+    results = temp_vector_db.search(sample_vectors[0], top_k=10, collection="default")
+    assert sorted(r.id for r in results) == ["doc1", "doc2"]
+    assert [r for r in results if r.id == "doc1"][0].text == "Content of document 1 v2"
+    assert [r for r in results if r.id == "doc2"][0].text == "Content of document 2 v2"
+    assert temp_vector_db.get_stats()["collections"]["default"]["total_vectors"] == 2
+
+
+def test_upsert_rebuild_in_named_collection_leaves_default_intact(temp_vector_db, sample_vectors, sample_metadata):
+    """A rebuild in one collection must not disturb siblings or the default alias."""
+    temp_vector_db.upsert(
+        vectors=sample_vectors[:2],
+        ids=["doc1", "doc2"],
+        metadata=[sample_metadata[0], sample_metadata[1]],
+        collection="default",
+    )
+    temp_vector_db.create_index(dimension=2, metric="euclidean", collection="l2c")
+    temp_vector_db.upsert(
+        vectors=[[1.0, 0.0], [0.0, 1.0]],
+        ids=["a", "b"],
+        metadata=[{"text": "a"}, {"text": "b"}],
+        collection="l2c",
+    )
+
+    # Triggers the rebuild path inside "l2c" only.
+    temp_vector_db.upsert(
+        vectors=[[1.0, 0.0]],
+        ids=["a"],
+        metadata=[{"text": "a2"}],
+        collection="l2c",
+    )
+
+    import faiss
+    assert temp_vector_db.indices["l2c"].metric_type == faiss.METRIC_L2
+    assert temp_vector_db.indices["l2c"].ntotal == 2
+    assert [r.id for r in temp_vector_db.search([1.0, 0.0], top_k=10, collection="l2c")] == ["a", "b"]
+
+    # "default" keeps its index, alias, mappings and metadata untouched.
+    assert temp_vector_db.index is temp_vector_db.indices["default"]
+    assert temp_vector_db.indices["default"].ntotal == 2
+    results = temp_vector_db.search(sample_vectors[0], top_k=10, collection="default")
+    assert sorted(r.id for r in results) == ["doc1", "doc2"]
+    assert [r for r in results if r.id == "doc1"][0].text == sample_metadata[0]["text"]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known limitation (ISSUES.md Issue 11): upsert only consults ids "
+    "already stored in the index, so duplicate ids within one batch "
+    "(['x', 'x']) are all appended. Remove this marker together with the "
+    "Issue 11 fix.",
+)
+def test_upsert_duplicate_ids_within_one_batch_stay_unique(temp_vector_db, sample_vectors):
+    """Desired contract: the last occurrence of an in-batch duplicate id wins."""
+    temp_vector_db.upsert(
+        vectors=[sample_vectors[0], sample_vectors[1]],
+        ids=["x", "x"],
+        metadata=[{"text": "v1"}, {"text": "v2"}],
+        collection="default",
+    )
+
+    assert temp_vector_db.index.ntotal == 1
+    results = temp_vector_db.search(sample_vectors[1], top_k=10, collection="default")
+    assert [r.id for r in results] == ["x"]
+    assert results[0].text == "v2"

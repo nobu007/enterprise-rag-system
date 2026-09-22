@@ -1,0 +1,158 @@
+meta:
+  generated_at: '2026-09-22T18:42:17.230427+00:00'
+  source_inputs:
+  - SYSTEM_CONSTITUTION.md
+  - PURPOSE.md
+  - README.md
+  - codebase-inventory
+  - recent-commits
+  - constitution-audit
+  - docs/llm-wiki/relations.md
+  - docs/llm-wiki/index.md and bounded direct wiki links
+  - docs/owner-decisions.json
+  version: 1
+  relations_digest: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  wiki_digest: fe7f51e740c7c859e2a5f189929e4796f846d5bba0465677178262230abadeae
+  owner_decisions_digest: f888e3bc1d9d8dd9881f2e5619bf4e2c61cf0ad1638f1839625ed080ef77bd77
+  business_objective_revision: null
+north_star: Enterprise-rag-system exists as the practical RAG data-integration spine
+  — load, parse, validate (PII/XSS/SQL-injection/quality), chunk, embed, and store
+  documents into FAISS or Pinecone behind a minimal FastAPI ingest/statistics surface
+  — with every change arriving as one bounded, test-verified improvement per autonomous
+  run. (SYSTEM_CONSTITUTION.md is absent; LOOP.md inside PURPOSE.md is the operative
+  constitution and sole command source for runs.)
+current_milestone: Hold and extend the post-slim-down convergence. As of the 2026-09-13
+  rebaseline, all queued ISSUES.md items were completed with the full pytest suite
+  green, source TODO/FIXME count is zero, and recent runs have been hardening FAISS
+  CRUD semantics (upsert replace, in-batch dedupe, delete, post-rebuild alias rebind).
+  The next outcome is to exhaust the remaining LOOP.md candidate sources in order
+  — README/docs ↔ app/ mismatches, then demonstrated spine edge cases — one minimal
+  verified change per run, ending in a clean interruption report when no safe candidate
+  remains.
+work_axes:
+- id: AX-1
+  title: Vector-store CRUD semantic correctness and FAISS↔Pinecone parity
+  rationale: 'The active hardening frontier of the spine is the vector store: recent
+    runs fixed FAISS upsert duplicating ids, implemented FAISS delete(), deduped in-batch
+    upsert ids, sanitized collection names in logs, and rebound stale legacy aliases
+    after index rebuild. README claims FAISS and Pinecone sit ''behind a common interface'',
+    but the recent fixes visibly targeted FAISS paths; parity is unverified.'
+  constitution_link: Fleet Execution Doctrine Art.5 (correctness enforced by tests
+    and gates, not standing LLM audit) + LOOP.md 手順3 検証ゲート (never commit with broken
+    existing tests)
+  acceptance_criteria: For each hardened semantic — upsert replaces existing ids,
+    in-batch id dedupe, delete(), stale-alias rebind after rebuild — both backends
+    are pinned by tests (Pinecone via mocked client, zero real API calls), or an explicit
+    documented backend-specific difference is recorded; full pytest suite green in
+    the .venv310 environment.
+  deliverable_type: fix
+- id: AX-2
+  title: README/docs ↔ app/ truth consistency
+  rationale: With ISSUES.md exhausted and zero TODO/FIXME, LOOP.md's third-priority
+    source (README/docs vs app/ mismatches) is the primary sanctioned candidate stream.
+    README makes specific claims — endpoints table, config keys/defaults, CLI flags,
+    the validation gate, content-hash document ids — each of which can silently drift
+    after the slim-down and the FAISS hardening runs.
+  constitution_link: LOOP.md 実行単位 priority 3 (README/docs vs app/ mismatch) + 禁止事項
+    誇張禁止 (no capability claims beyond what the code does)
+  acceptance_criteria: Every documented endpoint, configuration variable/default,
+    CLI flag, and behavioral claim in README is checked against app/ and scripts/ingest.py;
+    each found mismatch is fixed in one minimal commit (code or doc, whichever is
+    wrong); no new capability prose is added without implementing code; compileall
+    and pytest stay green.
+  deliverable_type: fix
+- id: AX-3
+  title: Ingestion-spine input robustness and validation-gate parity across entry
+    points
+  rationale: The spine's value is rejecting bad input before it reaches the store.
+    README promises a pre-ingestion quality gate with per-document error reports on
+    all ingestion; Issue 6 wired the gate into CLI ingest, but parity across the three
+    entry points (CLI, API directory ingest, API single-file upload) and edge behavior
+    of the loader/parser/chunker path (separator-free CJK fallback, PDF table extraction,
+    empty/short content) are only partially evidenced in the snapshot.
+  constitution_link: LOOP.md 手順2 最小変更 + 禁止事項 誇張禁止 (README's validation feature claim
+    must actually hold on every ingest path); fleet doctrine Art.5
+  acceptance_criteria: A test per entry point proves invalid documents are rejected
+    with per-document error reports and valid documents flow loader→splitter→embeddings→store
+    identically; any demonstrated edge-case failure (CJK chunking, PDF without extractable
+    text, empty directory) is reproduced by a failing test before being fixed; no
+    real embedding/cloud API calls; suite green.
+  deliverable_type: fix
+feature_gaps:
+- Pinecone backend parity with the FAISS hardening wave (upsert replace-existing-ids,
+  in-batch id dedupe, delete(), stale-alias rebind after rebuild) is unverified —
+  README advertises a common interface but recent fixes touched FAISS paths (unverified
+  in this snapshot).
+- Validator-gate parity across all three ingest entry points (CLI scripts/ingest.py,
+  POST /api/v1/documents/ingest, POST /api/v1/documents/upload) is unverified; only
+  the CLI gate application (Issue 6) is evidenced.
+- 'CLI ↔ API parameter parity is unverified: README shows chunk_size/chunk_overlap
+  on the API example but only --source/--collection/--db-type on the CLI; whether
+  scripts/ingest.py exposes equivalent chunking/validation controls is unconfirmed.'
+- Loader coverage is .txt/.md/.pdf only (README-consistent); any broader format support
+  would be scope expansion beyond the 2026-09-13 slim-down and must not be inferred
+  as a gap.
+anti_patterns:
+- Re-introducing any subsystem removed in the 2026-09-13 slim-down — LLM answer generation,
+  query serving, response caching, Celery batch queueing, rate limiting, tenancy,
+  encryption, metrics, or the demo UI — including 'just tests' or 'just stubs' for
+  them.
+- Real OpenAI/Cohere/Pinecone API calls, or reading .env/API keys, to 'verify' anything;
+  verification must use mocks per LOOP.md 禁止事項.
+- push, force-push, history rewriting, tag/release operations, deploy or public docker
+  builds — explicitly forbidden per run; reflection to remote happens only via the
+  harness after chain completion.
+- Taking a second improvement in one run, cross-cutting multi-area refactors, dependency
+  additions or major version updates — these must be split into ISSUES/TODO candidates
+  for later runs instead.
+- Cosmetic-only diffs (import reordering, renames, comment/style churn, docstring
+  polishing) with no behavior delta — LOOP.md requires one real improvement per run.
+- Re-pinning behavior already pinned by the recent upsert/delete/dedupe/alias-rebind
+  tests; only genuinely new edges justify new tests.
+- Editing README to exaggerate capabilities, or rewriting/regenerating the auto-transcribed
+  LOOP.md section inside PURPOSE.md (edits belong to LOOP.md itself).
+- Treating harness/metadata directories (.tas, .concept, .serena, .venv310, .benchmarks)
+  as improvement targets, or editing the distributed fleet-execution-doctrine sheet
+  (amendments happen at the apex repository, not here).
+- 'Inventing work to avoid an interruption report: when ISSUES.md, TODO/FIXME, and
+  doc mismatches are exhausted, a clean no-change interruption report is the correct
+  run outcome.'
+next_deliverables:
+- id: D-1
+  title: Audit README/docs claims against app/ and fix the first concrete mismatch
+  type: fix
+  classification: A
+  constitution_link: LOOP.md 実行単位 priority 3 + 禁止事項 誇張禁止
+  acceptance: Systematic check of README claims (endpoint table, config keys/defaults,
+    CLI flags, validation gate, content-hash ids) against app/api, app/core, app/services,
+    and scripts/ingest.py; exactly one found mismatch fixed in one minimal commit
+    (code or doc side, whichever is wrong); python3 -m compileall app -q clean; pytest
+    suite green; if no mismatch exists, a no-change interruption report documenting
+    the verified claims.
+- id: D-2
+  title: Verify and align Pinecone backend with hardened FAISS CRUD semantics
+  type: fix
+  classification: A
+  constitution_link: Fleet Execution Doctrine Art.5 (tests and gates enforce correctness)
+    + LOOP.md 手順3 検証ゲート
+  acceptance: Mocked-client tests demonstrate, for Pinecone, the same semantics recently
+    hardened on FAISS — upsert replaces existing ids, in-batch duplicate ids deduped,
+    delete() removes ids, collection handling consistent after index rebuild; divergent
+    behavior is minimally fixed, or an already-consistent backend is confirmed by
+    the new pinning tests with no code change; zero network/API calls; pytest suite
+    green.
+- id: D-3
+  title: Close validation-gate and parameter parity across the three ingest entry
+    points
+  type: fix
+  classification: A
+  constitution_link: LOOP.md 禁止事項 誇張禁止 (README's pre-ingestion validation claim must
+    hold on every path) + 手順2 最小変更
+  acceptance: One test per entry point (CLI, API directory ingest, API single-file
+    upload) proves invalid documents are rejected with per-document error reports;
+    any parameter exposed on one path but silently ignored on another (e.g. chunk_size/chunk_overlap)
+    is either wired through minimally or documented accurately; if all paths already
+    route through the gate, the pinning tests land and no production code changes;
+    suite green.
+stagnation_signals:
+  max_age_days: 7

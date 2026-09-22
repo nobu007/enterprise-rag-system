@@ -340,16 +340,19 @@ class FAISSVectorDB(VectorDB):
                                 self.idx_to_id_mappings[collection_name] = {int(k): v for k, v in data['idx_to_id'].items()}
                         elif os.path.exists(collection_meta_pkl):
                             import pickle
-                            logger.warning(f"Loading legacy pickle metadata for collection '{collection_name}'. Will be saved as JSON on next save.")
+                            logger.warning(f"Loading legacy pickle metadata for collection '{sanitize_for_log(collection_name)}'. Will be saved as JSON on next save.")
                             with open(collection_meta_pkl, 'rb') as f:
                                 data = pickle.load(f)
                                 self.metadata_stores[collection_name] = data['metadata_store']
                                 self.id_to_idx_mappings[collection_name] = data['id_to_idx']
                                 self.idx_to_id_mappings[collection_name] = data['idx_to_id']
 
-                        logger.info(f"Loaded FAISS index for collection '{collection_name}' from: {collection_file}")
+                        # collection_file embeds the collection name via
+                        # f"{path}.{collection}" at save time, so both halves
+                        # need the same treatment (CWE-117, Issue 12 sweep).
+                        logger.info(f"Loaded FAISS index for collection '{sanitize_for_log(collection_name)}' from: {sanitize_for_log(collection_file)}")
                     except Exception as e:
-                        logger.warning(f"Failed to load collection '{collection_name}': {e}")
+                        logger.warning(f"Failed to load collection '{sanitize_for_log(collection_name)}': {sanitize_for_log(e)}")
 
                 logger.info(f"Loaded FAISS index from: {self.index_path}")
             else:

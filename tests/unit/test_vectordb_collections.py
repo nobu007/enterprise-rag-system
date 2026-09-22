@@ -300,6 +300,91 @@ class TestCollectionLogInjectionVectorDB:
         # Escaped form is present -> value preserved, only log rep changed.
         assert any("x\\nFAKE LOG line\\r" in msg for msg in relevant)
 
+    def test_collection_crlf_neutralised_in_load_logs(
+        self, temp_vector_db, sample_vectors, sample_metadata, tmp_path
+    ):
+        """Issue 13 sweep (verify-stage residual of Issue 12): connect()'s
+        load path re-logs a persisted collection name raw. save() sanitises
+        its own log lines but still writes the client-controlled name into
+        the file name via f"{path}.{collection}", so a later connect()
+        interpolates it raw in three places: the loaded-index INFO (whose
+        collection_file half also embeds the name), the legacy-pickle
+        WARNING, and the failed-load WARNING (faiss's error text can quote
+        the file name)."""
+        base = str(tmp_path / "idx")
+        collection = "x\nFAKE LOG line\r"
+        temp_vector_db.create_index(dimension=384, collection=collection)
+        temp_vector_db.upsert(
+            vectors=[sample_vectors[0]],
+            ids=["doc1"],
+            metadata=[sample_metadata[0]],
+            collection=collection,
+        )
+        # connect() only reaches the named-collection glob loop when the
+        # default index file exists, so save all collections (default +
+        # named), not just the named one.
+        temp_vector_db.save(base)
+        index_file = f"{base}.{collection}"
+        assert os.path.exists(index_file)
+
+        # Rewind this collection's metadata to the legacy pickle layout so
+        # connect() takes the branch that logs the migration WARNING.
+        json_path = index_file + ".metadata.json"
+        pkl_path = index_file + ".metadata.pkl"
+        with open(json_path, encoding="utf-8") as f:
+            legacy = json.load(f)
+        legacy["idx_to_id"] = {int(k): v for k, v in legacy["idx_to_id"].items()}
+        os.remove(json_path)
+        with open(pkl_path, "wb") as f:
+            pickle.dump(legacy, f)
+
+        # A sibling suffixed file that is not a FAISS index takes the
+        # failed-load WARNING branch; its name carries CR/LF too.
+        with open(f"{base}.bad\nFAIL line", "wb") as f:
+            f.write(b"not a faiss index")
+
+        vectordb_logger = logging.getLogger("app.core.vectordb")
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(record)
+
+        handler = _Capture(logging.DEBUG)
+        vectordb_logger.addHandler(handler)
+        vectordb_logger.setLevel(logging.DEBUG)
+        try:
+            reloaded = FAISSVectorDB(index_path=base)
+            reloaded.connect()
+        finally:
+            vectordb_logger.removeHandler(handler)
+
+        relevant = [
+            r.getMessage()
+            for r in captured
+            if "collection" in r.getMessage()
+        ]
+        # All three load-path branches fired.
+        assert any("Loaded FAISS index for collection" in m for m in relevant)
+        assert any("Loading legacy pickle metadata" in m for m in relevant)
+        assert any("Failed to load collection" in m for m in relevant)
+        for msg in relevant:
+            # No raw CR/LF survives -> no forged log line.
+            assert "\n" not in msg
+            assert "\r" not in msg
+        # Escaped form is present -> value preserved, only log rep changed.
+        assert any("x\\nFAKE LOG line\\r" in m for m in relevant)
+        assert any("bad\\nFAIL line" in m for m in relevant)
+
+        # Loading itself is unaffected: the persisted row stays searchable
+        # through the (legacy-pickle) metadata branch.
+        results = reloaded.search(
+            query_vector=sample_vectors[0],
+            top_k=5,
+            collection=collection,
+        )
+        assert [r.id for r in results] == ["doc1"]
+
 
 def test_vector_db_get_stats_multiple_collections(temp_vector_db, sample_vectors, sample_metadata):
     """Test that get_stats returns information about all collections"""

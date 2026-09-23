@@ -106,6 +106,47 @@ class TestDocumentsIngestEndpoint:
         )
         assert response.status_code == 400
 
+    def test_ingest_control_chars_neutralised_in_logs(
+        self, client, tmp_path, caplog
+    ):
+        """CRLF in client-supplied paths must not forge log lines.
+
+        The source_path — both the directory name and the file names it
+        contains — is client-controlled and used to flow raw into the
+        route's info/warning lines and the loader's per-file debug line
+        (the CWE-117 class pinned for vectordb collection logs in
+        Issues 11-13). The bad file also fails validation so the
+        failed-validation warning (metadata source + error messages)
+        is exercised; the XSS error message embeds a content slice,
+        making error_messages client-carried too.
+        """
+        import logging
+
+        forged_dir = tmp_path / "src\n2000-01-01 INFO admin login ok"
+        forged_dir.mkdir()
+        (forged_dir / "good.txt").write_text(
+            "Enterprise RAG systems retrieve relevant passages for a "
+            "query and feed them to a language model.",
+            encoding="utf-8",
+        )
+        (forged_dir / "bad\n2000-01-01 INFO root ok.txt").write_text(
+            "<script>alert(1)</script> trailing padding so the file "
+            "looks like an ordinary document body",
+            encoding="utf-8",
+        )
+
+        with caplog.at_level(logging.DEBUG):
+            response = client.post(
+                "/api/v1/documents/ingest",
+                json={"source_path": str(forged_dir)},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+        messages = [record.getMessage() for record in caplog.records]
+        assert not any("\n" in m or "\r" in m for m in messages)
+        assert any("\\n2000-01-01 INFO admin login ok" in m for m in messages)
+
 
 class TestDocumentsUploadEndpoint:
     """POST /api/v1/documents/upload"""

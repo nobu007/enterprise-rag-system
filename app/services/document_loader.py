@@ -9,7 +9,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import hashlib
 
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_for_log
 
 
 logger = get_logger(__name__)
@@ -156,10 +156,13 @@ class DocumentLoader:
                     doc = DocumentLoader.load_text_file(str(file_path))
                     documents.append(doc)
 
-                logger.debug(f"Loaded: {file_path.name}")
+                logger.debug(f"Loaded: {sanitize_for_log(file_path.name)}")
 
             except Exception as e:
-                logger.error(f"Failed to load {file_path.name}: {e}")
+                logger.error(
+                    f"Failed to load {sanitize_for_log(file_path.name)}: "
+                    f"{sanitize_for_log(e)}"
+                )
 
         logger.info(f"Successfully loaded {len(documents)} documents")
         return documents

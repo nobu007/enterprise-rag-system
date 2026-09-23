@@ -8,7 +8,7 @@ For backward compatibility, the original document_loader.py is maintained.
 from typing import List, Optional
 from pathlib import Path
 
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_for_log
 from app.services.parser import DocumentParser, TableFormat
 
 
@@ -85,7 +85,10 @@ class EnhancedDocumentLoader:
                 return [Document(content=content, metadata=metadata)]
 
             except Exception as e:
-                logger.warning(f"Advanced parsing failed, falling back to basic: {e}")
+                logger.warning(
+                    f"Advanced parsing failed, falling back to basic: "
+                    f"{sanitize_for_log(e)}"
+                )
 
         # Fallback to basic PDF loading
         from app.services.document_loader import DocumentLoader
@@ -157,10 +160,13 @@ class EnhancedDocumentLoader:
                     doc = self.load_text_file(str(file_path))
                     documents.append(doc)
 
-                logger.debug(f"Loaded: {file_path.name}")
+                logger.debug(f"Loaded: {sanitize_for_log(file_path.name)}")
 
             except Exception as e:
-                logger.error(f"Failed to load {file_path.name}: {e}")
+                logger.error(
+                    f"Failed to load {sanitize_for_log(file_path.name)}: "
+                    f"{sanitize_for_log(e)}"
+                )
 
         logger.info(f"Successfully loaded {len(documents)} documents")
         return documents

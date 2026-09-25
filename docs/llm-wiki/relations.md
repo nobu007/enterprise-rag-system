@@ -10,8 +10,7 @@ No evidenced relationships yet.
 
 ## 階層関係（エスカレーション経路）
 
-- 親: business_operation_notes（推定・jinno確定待ち）
-- 根拠: RAG 前処理の汎用データ統合スパイン（特定事業の商品でなく共通インフラ的実装）であり、既存の relations 記録でも自己完結とされている。
-- 出典: README.md の Scope note（2026-09-13 slim-down）、docs/llm-wiki/relations.md、原則 llm-wiki-discipline の drafts-are-status-marked（状態表示付き草案）。
+- 親: business_operation_notes（jinno確定 2026-09-26）
+- 根拠: 特定事業の商品でない汎用データ統合スパイン
+- 出典: contracts registry `registry/organization/repositories/enterprise-rag-system.yaml` の spec.parent（contracts commit ecbc226）。2026-09-26 の一括レビュー表（/home/jinno/output/repo-parent-review-2026-09-26.md）を jinno が現状案で承認。
 
-- Observation: 上記の親は推定草案であり、jinno確定後に contracts registry の spec.parent へ反映される。provider/consumer の検証済み関係はまだない。

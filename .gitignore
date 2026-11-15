@@ -41,3 +41,10 @@ results/
 # auto-added by instructions/10_storage/100_audit_storage_policy.md
 .aihub-session.json
 
+# auto-added by instructions/10_storage/100_audit_storage_policy.md
+.audit/development_direction.yml
+
+# tas-autopilot post_dispatch artifact gate forbids every .audit/** path;
+# keep all host-local run state invisible to the leftover sweep
+.audit/
+

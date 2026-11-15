@@ -1,0 +1,7 @@
+# TAS repo metadata — 暫定(2026-09-21)・正本は contracts repo 稼働開始時に移行
+schema: tas/repo-meta/v1
+repo_id: enterprise-rag-system
+remote: https://github.com/nobu007/enterprise-rag-system
+hosting: multi-host # multi-host=どのマシンでもcloneして運用可 / pinned=書込み担当マシン固定(cloneは自由)
+reason: code
+stamped_at: "2026-09-21"

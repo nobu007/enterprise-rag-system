@@ -8,6 +8,56 @@
 
 ---
 
+## Issue 14: ingest API 経路の残存生クライアント値ログ（source_path・ファイル名・検証エラー文）— **完了・2026-09-23**
+
+**内容:** Issue 13（525ae9c）で vectordb の `collection` ログは全サニタイズ済みだが、
+ingest API 経路には同種（CWE-117）の生挿入が残っていた: `routes/documents.py` の
+`request.source_path`（:115）、検証 warning/error の `doc.metadata['source']` と
+`error_messages`（:137/:147 — validator の SECURITY_XSS は書類内容の 50 字切片を
+埋め込むため `error_messages` もクライアント由来）、upload の `file.filename`
+（:314/:326）。さらに loader 2 種の `file_path.name`/例外文
+（`document_loader.py` :159/:162、`document_loader_enhanced.py` :88/:163/:166 —
+enhanced は API 経路外だが同型サイト）。2026-09-23 の bug_fix_cycle
+Prevent Recurrence stage が app 全 log コールサイトのスイープで発見。
+
+**タスク:**
+- [x] 上記全サイトを `sanitize_for_log` 経由に変更（クライアント値の辺のみ。
+      `error_messages` は内容由来のため両辺、例外文はファイル名を引用し得るため両辺）
+- ✅ 2026-09-23 run（Prevent Recurrence stage）: 修正 + ピンテスト
+      `test_ingest_control_chars_neutralised_in_logs` を
+      `tests/unit/test_api_routes.py` の既存クラスに追記（CRLF 入り dir 名・
+      ファイル名 + XSS 検証失敗を混ぜて ingest → ルート info・loader debug・
+      検証 failed-warning の全経路で偽造行が成立しないこと・エスケープ形で
+      出ることを確認。pre-fix レッド確認済み: 3 経路すべてに生の偽装行が出た）。
+      **301 passed / 0 failed**・`compileall app scripts` OK・app 全 log 挿入の
+      再スイープで client-controlled の生挿入が 0 件（残りは `len()` のみ・
+      config 由来 `index_name`/`index_path`・事業者側例外で、クライアント値の
+      引用経路なし — main の初期化例外と embeddings の失敗例外は対象外と判断）。
+      upload の `file.filename` 2 サイトは TestClient 経由で CRLF ファイル名を
+      再現できないためコード修正のみ（ヘッダ改竄でのみ到達可能な経路）。
+
+## Issue 13: `connect()` ロード経路の残存生 `collection` ログ — **完了・2026-09-23**
+
+**内容:** Issue 12（cb18ffa）は create/upsert/save/delete のログを `sanitize_for_log`
+経由にしたが、`save()` はクライアント指定の `collection` 名を**ファイル名**
+`f"{path}.{collection}"` のまま永続化するため、次回 `connect()` のロード経路
+（vectordb.py:343 legacy pickle 警告・:350 ロード成功 info・:352 ロード失敗警告）
+で同一名が**生のまま再ログ**される二次経路が残っていた（CWE-117 同種。
+2026-09-22 の bug_fix_cycle Verify stage が独立スイープで発見・報告のみ）。
+
+**タスク:**
+- [x] 3 ヶ所を `sanitize_for_log` 経由に変更（`collection_file` は
+      `f"{path}.{collection}"` 由来、失敗警告の例外文 `e` はファイル名を引用し
+      得るため、いずれも save() の前例と同じく両辺をサニタイズ）
+- ✅ 2026-09-23 run（Prevent Recurrence stage）: 上記 3 ヶ所を修正。
+      ピンテスト `test_collection_crlf_neutralised_in_load_logs` を
+      `tests/unit/test_vectordb_collections.py` の既存注入テストクラスに追記
+      （save→metadata を legacy pkl 化→不正 suffix ファイル添置→`connect()` で
+      3 経路を一括再ログ。pre-fix レッド確認済み: 3 サイトすべてに生 CRLF で
+      偽ログ行が成立）。ロード後の検索可能性は不変（doc1 ヒット）。**300
+      passed / 0 failed**・`compileall app scripts` OK・vectordb.py の
+      collection 挿入ログ全 9 行が `sanitize_for_log` 経由であることを grep で確認。
+
 ## Issue 12: vectordb の残存整理 — 生 `collection` ログと rebuild 後のレガシー別名 — **完了・2026-09-14**
 
 **内容:** Issue 11 の `delete()` 成功ログは `sanitize_for_log` で統一したが、

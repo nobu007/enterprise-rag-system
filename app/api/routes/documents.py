@@ -12,7 +12,7 @@ import tempfile
 import os
 import uuid
 
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_for_log
 from app.services.validator import DocumentValidator
 
 
@@ -112,7 +112,7 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         settings = get_settings()
 
         # Load documents
-        logger.info(f"Loading documents from: {request.source_path}")
+        logger.info(f"Loading documents from: {sanitize_for_log(request.source_path)}")
         documents = DocumentLoader.load_directory(request.source_path)
 
         if not documents:
@@ -135,7 +135,7 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
                 # Log warnings if any
                 if result.warnings:
                     logger.warning(
-                        f"Document {doc.metadata.get('source', 'unknown')} "
+                        f"Document {sanitize_for_log(doc.metadata.get('source', 'unknown'))} "
                         f"has warnings: {result.warnings}"
                     )
             else:
@@ -145,8 +145,8 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
                     'errors': error_messages
                 })
                 logger.warning(
-                    f"Document {doc.metadata.get('source', 'unknown')} "
-                    f"failed validation: {error_messages}"
+                    f"Document {sanitize_for_log(doc.metadata.get('source', 'unknown'))} "
+                    f"failed validation: {sanitize_for_log(error_messages)}"
                 )
 
         # Update statistics to reflect only valid documents
@@ -312,7 +312,8 @@ async def upload_document(
                 if not result.is_valid:
                     error_messages = [str(e) for e in result.errors]
                     logger.warning(
-                        f"Uploaded file {file.filename} failed validation: {error_messages}"
+                        f"Uploaded file {sanitize_for_log(file.filename)} failed validation: "
+                        f"{sanitize_for_log(error_messages)}"
                     )
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -324,7 +325,8 @@ async def upload_document(
                     )
                 elif result.warnings:
                     logger.warning(
-                        f"Uploaded file {file.filename} has warnings: {result.warnings}"
+                        f"Uploaded file {sanitize_for_log(file.filename)} has warnings: "
+                        f"{result.warnings}"
                     )
 
             # Split and embed
